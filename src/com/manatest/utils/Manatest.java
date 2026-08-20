@@ -27,7 +27,7 @@ import java.io.File;
 
 @DesignerComponent(
         version = 1,
-        description = "Extension Manatest pour la gestion des bulles de chat et de la grille produit 2x2.",
+        description = "Extension Manatest pour la gestion des bulles de chat dynamiques et de la grille produit 2x2 infinie.",
         category = ComponentCategory.EXTENSION,
         nonVisible = true
 )
@@ -63,10 +63,10 @@ public class Manatest extends AndroidNonvisibleComponent {
     }
 
     // =========================================================================
-    // 1. BULLE DE CHAT DYNAMIQUE (Message + Heure)
+    // 1. CHAT BULLE DYNAMIQUE (Duplication, Scroll, Heure Fixe)
     // =========================================================================
 
-    @SimpleFunction(description = "Ajoute une bulle de chat dynamique qui s'élargit avec le texte et intègre l'heure sous le message.")
+    @SimpleFunction(description = "Ajoute une nouvelle bulle de chat indépendante avec heure fixe en bas à droite.")
     public void AddChatBubble(
             final AndroidViewComponent chatContainer,
             final String messageText,
@@ -79,14 +79,35 @@ public class Manatest extends AndroidNonvisibleComponent {
             @Override
             public void run() {
                 try {
-                    ViewGroup parentLayout = (ViewGroup) chatContainer.getView();
+                    View view = chatContainer.getView();
+                    ViewGroup targetLayout = null;
 
-                    // Bulle verticale pour empiler message et heure
+                    // Supporte ScrollArrangement et VerticalArrangement
+                    if (view instanceof ScrollView) {
+                        ScrollView sv = (ScrollView) view;
+                        if (sv.getChildCount() > 0) {
+                            targetLayout = (ViewGroup) sv.getChildAt(0);
+                        } else {
+                            LinearLayout content = new LinearLayout(context);
+                            content.setOrientation(LinearLayout.VERTICAL);
+                            sv.addView(content, new ViewGroup.LayoutParams(
+                                    ViewGroup.LayoutParams.MATCH_PARENT,
+                                    ViewGroup.LayoutParams.WRAP_CONTENT
+                            ));
+                            targetLayout = content;
+                        }
+                    } else if (view instanceof ViewGroup) {
+                        targetLayout = (ViewGroup) view;
+                    }
+
+                    if (targetLayout == null) return;
+
+                    // Bulle de chat principale (Conteneur du message + heure)
                     LinearLayout bubble = new LinearLayout(context);
                     bubble.setOrientation(LinearLayout.VERTICAL);
                     bubble.setPadding(28, 20, 28, 16);
 
-                    // Arrière-plan arrondi de la bulle
+                    // Arrière-plan de la bulle avec coins arrondis
                     GradientDrawable bg = new GradientDrawable();
                     bg.setShape(GradientDrawable.RECTANGLE);
                     bg.setColor(bubbleColor);
@@ -102,41 +123,49 @@ public class Manatest extends AndroidNonvisibleComponent {
                         msgTv.setTypeface(customTypeface);
                     }
 
-                    // Limite la largeur maximale à 78% de l'écran
-                    int maxWidth = (int) (context.getResources().getDisplayMetrics().widthPixels * 0.78);
+                    // Limite la largeur maximale à 75% de l'écran
+                    int maxWidth = (int) (context.getResources().getDisplayMetrics().widthPixels * 0.75);
                     msgTv.setMaxWidth(maxWidth);
                     bubble.addView(msgTv);
 
-                    // Texte de l'heure (affiché en bas sous le message)
+                    // Texte de l'heure (Fixé en bas à droite de la bulle)
                     TextView timeTv = new TextView(context);
                     timeTv.setText(timeText);
                     timeTv.setTextColor(Color.argb(170, Color.red(textColor), Color.green(textColor), Color.blue(textColor)));
                     timeTv.setTextSize(10);
-                    timeTv.setGravity(Gravity.END);
-                    timeTv.setPadding(0, 6, 0, 0);
+                    
+                    LinearLayout.LayoutParams timeParams = new LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                    );
+                    timeParams.gravity = Gravity.END;
+                    timeParams.setMargins(0, 6, 0, 0);
+                    timeTv.setLayoutParams(timeParams);
+
                     if (customTypeface != null) {
                         timeTv.setTypeface(customTypeface);
                     }
                     bubble.addView(timeTv);
 
-                    // Configuration de l'alignement (Moi = Droite, Autre = Gauche)
-                    LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                    // Positionnement de la bulle sur la ligne (Gauche / Droite)
+                    LinearLayout.LayoutParams bubbleParams = new LinearLayout.LayoutParams(
                             LinearLayout.LayoutParams.WRAP_CONTENT,
                             LinearLayout.LayoutParams.WRAP_CONTENT
                     );
-                    params.gravity = isMe ? Gravity.END : Gravity.START;
-                    params.setMargins(16, 10, 16, 10);
-                    bubble.setLayoutParams(params);
+                    bubbleParams.gravity = isMe ? Gravity.END : Gravity.START;
+                    bubbleParams.setMargins(16, 8, 16, 8);
+                    bubble.setLayoutParams(bubbleParams);
 
-                    parentLayout.addView(bubble);
+                    // Ajout de la bulle au conteneur principal
+                    targetLayout.addView(bubble);
 
-                    // Défilement automatique vers le bas si le conteneur est dans un ScrollView
-                    if (parentLayout.getParent() instanceof ScrollView) {
-                        final ScrollView scrollView = (ScrollView) parentLayout.getParent();
-                        scrollView.post(new Runnable() {
+                    // Auto-Scroll vers le bas si le parent est un ScrollView
+                    if (view instanceof ScrollView) {
+                        final ScrollView sv = (ScrollView) view;
+                        sv.post(new Runnable() {
                             @Override
                             public void run() {
-                                scrollView.fullScroll(View.FOCUS_DOWN);
+                                sv.fullScroll(View.FOCUS_DOWN);
                             }
                         });
                     }
@@ -149,10 +178,10 @@ public class Manatest extends AndroidNonvisibleComponent {
     }
 
     // =========================================================================
-    // 2. GRILLE PRODUIT 2x2 (30% Hauteur / ~50% Largeur)
+    // 2. GRILLE PRODUIT 2x2 INFINIE (Correction de l'affichage complet)
     // =========================================================================
 
-    @SimpleFunction(description = "Génère une grille 2x2 dynamique basée sur les critères visuels (30% hauteur, 50% largeur).")
+    @SimpleFunction(description = "Génère une grille 2x2 dynamique pour l'ensemble des produits du JSON.")
     public void BuildProductGridFromJson(
             final AndroidViewComponent scrollContainer,
             final String jsonData) {
@@ -169,11 +198,28 @@ public class Manatest extends AndroidNonvisibleComponent {
                         @Override
                         public void run() {
                             try {
-                                ViewGroup mainLayout = (ViewGroup) scrollContainer.getView();
-                                mainLayout.removeAllViews();
+                                View view = scrollContainer.getView();
+                                ViewGroup targetLayout = null;
 
-                                int cardWidth = (int) (screenWidth * 0.46);  // ~50% largeur avec marges
-                                int cardHeight = (int) (screenHeight * 0.30); // 30% hauteur de l'écran
+                                if (view instanceof ScrollView) {
+                                    ScrollView sv = (ScrollView) view;
+                                    sv.removeAllViews();
+                                    LinearLayout verticalContent = new LinearLayout(context);
+                                    verticalContent.setOrientation(LinearLayout.VERTICAL);
+                                    sv.addView(verticalContent, new ViewGroup.LayoutParams(
+                                            ViewGroup.LayoutParams.MATCH_PARENT,
+                                            ViewGroup.LayoutParams.WRAP_CONTENT
+                                    ));
+                                    targetLayout = verticalContent;
+                                } else if (view instanceof ViewGroup) {
+                                    targetLayout = (ViewGroup) view;
+                                    targetLayout.removeAllViews();
+                                }
+
+                                if (targetLayout == null) return;
+
+                                int cardWidth = (int) (screenWidth * 0.45);   // ~50% de la largeur
+                                int cardHeight = (int) (screenHeight * 0.30);  // 30% de la hauteur de l'écran
 
                                 LinearLayout currentRow = null;
 
@@ -183,7 +229,7 @@ public class Manatest extends AndroidNonvisibleComponent {
                                     String titleStr = item.optString("title", "");
                                     String priceStr = item.optString("price", "");
 
-                                    // Ligne de 2 éléments
+                                    // Création d'une nouvelle ligne horizontale tous les 2 produits
                                     if (i % 2 == 0) {
                                         currentRow = new LinearLayout(context);
                                         currentRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -192,12 +238,12 @@ public class Manatest extends AndroidNonvisibleComponent {
                                                 LinearLayout.LayoutParams.MATCH_PARENT,
                                                 LinearLayout.LayoutParams.WRAP_CONTENT
                                         );
-                                        rowParams.setMargins(0, 6, 0, 6);
+                                        rowParams.setMargins(0, 4, 0, 4);
                                         currentRow.setLayoutParams(rowParams);
-                                        mainLayout.addView(currentRow);
+                                        targetLayout.addView(currentRow);
                                     }
 
-                                    // Carte Produit (30% x 50%)
+                                    // Carte du produit
                                     CardView card = new CardView(context);
                                     LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(cardWidth, cardHeight);
                                     cardParams.setMargins(8, 8, 8, 8);
@@ -205,7 +251,7 @@ public class Manatest extends AndroidNonvisibleComponent {
                                     card.setRadius(16f);
                                     card.setCardElevation(4f);
 
-                                    // Conteneur interne
+                                    // Conteneur interne de la carte
                                     LinearLayout inner = new LinearLayout(context);
                                     inner.setOrientation(LinearLayout.VERTICAL);
                                     inner.setLayoutParams(new LinearLayout.LayoutParams(
@@ -213,7 +259,7 @@ public class Manatest extends AndroidNonvisibleComponent {
                                             LinearLayout.LayoutParams.MATCH_PARENT
                                     ));
 
-                                    // 1. Image
+                                    // Image
                                     ImageView img = new ImageView(context);
                                     LinearLayout.LayoutParams imgParams = new LinearLayout.LayoutParams(
                                             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -224,7 +270,7 @@ public class Manatest extends AndroidNonvisibleComponent {
                                     img.setBackgroundColor(Color.parseColor("#EEEEEE"));
                                     inner.addView(img);
 
-                                    // 2. Titre produit
+                                    // Titre
                                     TextView titleTv = new TextView(context);
                                     titleTv.setText(titleStr);
                                     titleTv.setTextColor(Color.BLACK);
@@ -235,7 +281,7 @@ public class Manatest extends AndroidNonvisibleComponent {
                                     }
                                     inner.addView(titleTv);
 
-                                    // 3. Prix produit
+                                    // Prix
                                     TextView priceTv = new TextView(context);
                                     priceTv.setText(priceStr);
                                     priceTv.setTextColor(Color.BLACK);
@@ -249,7 +295,7 @@ public class Manatest extends AndroidNonvisibleComponent {
 
                                     card.addView(inner);
 
-                                    // Clic sur la carte
+                                    // Gestion du clic
                                     card.setOnClickListener(new View.OnClickListener() {
                                         @Override
                                         public void onClick(View v) {
@@ -282,3 +328,4 @@ public class Manatest extends AndroidNonvisibleComponent {
         EventDispatcher.dispatchEvent(this, "OnProductCardClick", productUid);
     }
 }
+
