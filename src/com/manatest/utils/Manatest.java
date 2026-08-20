@@ -6,6 +6,7 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -129,7 +130,7 @@ public class Manatest extends AndroidNonvisibleComponent {
 
                     parentLayout.addView(bubble);
 
-                    // Défilement automatique vers le bas si le conteneur est un ScrollView
+                    // Défilement automatique vers le bas si le conteneur est dans un ScrollView
                     if (parentLayout.getParent() instanceof ScrollView) {
                         final ScrollView scrollView = (ScrollView) parentLayout.getParent();
                         scrollView.post(new Runnable() {
@@ -281,4 +282,3 @@ public class Manatest extends AndroidNonvisibleComponent {
         EventDispatcher.dispatchEvent(this, "OnProductCardClick", productUid);
     }
 }
-
