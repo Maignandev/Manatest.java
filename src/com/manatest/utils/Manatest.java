@@ -32,7 +32,7 @@ import java.net.URL;
 
 @DesignerComponent(
         version = 1,
-        description = "Extension Manatest pour la gestion des bulles de chat dynamiques avec avatar et grille produit 2x2 avec support URL.",
+        description = "Extension Manatest corrigée (Sans élévation grille, bulle responsive et avatar verrouillé).",
         category = ComponentCategory.EXTENSION,
         nonVisible = true
 )
@@ -61,7 +61,6 @@ public class Manatest extends AndroidNonvisibleComponent {
         return null;
     }
 
-    // Charger les images (URLs Serveur http/https ou Assets locaux)
     private void loadImageAsync(final ImageView imageView, final String imagePath) {
         if (imagePath == null || imagePath.trim().isEmpty()) return;
 
@@ -102,10 +101,6 @@ public class Manatest extends AndroidNonvisibleComponent {
         });
     }
 
-    // =========================================================================
-    // POLICE PERSONNALISÉE
-    // =========================================================================
-
     @SimpleFunction(description = "Charge une police personnalisée (.ttf ou .otf).")
     public void LoadCustomFont(String fontPath) {
         try {
@@ -121,10 +116,10 @@ public class Manatest extends AndroidNonvisibleComponent {
     }
 
     // =========================================================================
-    // 1. BULLE DE CHAT DYNAMIQUE (Largeur fixe corrigée + Avatar 6%/15% cliquable)
+    // 1. BULLE DE CHAT DYNAMIQUE (Taille Avatar Verrouillée + Largeur Bulle Flexible)
     // =========================================================================
 
-    @SimpleFunction(description = "Ajoute une bulle de chat avec avatar cliquable et horodatage.")
+    @SimpleFunction(description = "Ajoute une bulle de chat avec avatar verrouillé et largeur dynamique.")
     public void AddChatBubble(
             final AndroidViewComponent chatContainer,
             final String messageText,
@@ -144,7 +139,7 @@ public class Manatest extends AndroidNonvisibleComponent {
                     int screenWidth = activity.getResources().getDisplayMetrics().widthPixels;
                     int screenHeight = activity.getResources().getDisplayMetrics().heightPixels;
 
-                    // Rangee principale (Ligne d'un message)
+                    // Rangee globale
                     LinearLayout row = new LinearLayout(context);
                     row.setOrientation(LinearLayout.HORIZONTAL);
                     row.setGravity(isMe ? Gravity.END : Gravity.START);
@@ -153,26 +148,24 @@ public class Manatest extends AndroidNonvisibleComponent {
                             LinearLayout.LayoutParams.MATCH_PARENT,
                             LinearLayout.LayoutParams.WRAP_CONTENT
                     );
-                    rowParams.setMargins(12, 10, 12, 10);
+                    rowParams.setMargins(10, 8, 10, 8);
                     row.setLayoutParams(rowParams);
 
-                    // --- AVATAR (Hauteur 6%, Largeur 15%, Radius 30) ---
-                    CardView avatarCard = new CardView(context);
-                    int avatarWidth = (int) (screenWidth * 0.15);
-                    int avatarHeight = (int) (screenHeight * 0.06);
+                    // --- AVATAR TAILLE VERROUILLÉE (Width: 15%, Height: 6%, Radius: 30) ---
+                    int lockedAvWidth = (int) (screenWidth * 0.15);
+                    int lockedAvHeight = (int) (screenHeight * 0.06);
 
-                    LinearLayout.LayoutParams avatarParams = new LinearLayout.LayoutParams(avatarWidth, avatarHeight);
+                    CardView avatarCard = new CardView(context);
+                    LinearLayout.LayoutParams avatarParams = new LinearLayout.LayoutParams(lockedAvWidth, lockedAvHeight);
                     avatarParams.gravity = Gravity.BOTTOM;
-                    avatarParams.setMargins(8, 0, 8, 0);
+                    avatarParams.setMargins(6, 0, 6, 0);
                     avatarCard.setLayoutParams(avatarParams);
                     avatarCard.setRadius(30f);
-                    avatarCard.setCardElevation(2f);
+                    avatarCard.setCardElevation(0f);
+                    avatarCard.setMaxCardElevation(0f);
 
                     ImageView avatarImg = new ImageView(context);
-                    avatarImg.setLayoutParams(new ViewGroup.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.MATCH_PARENT
-                    ));
+                    avatarImg.setLayoutParams(new ViewGroup.LayoutParams(lockedAvWidth, lockedAvHeight));
                     avatarImg.setScaleType(ImageView.ScaleType.CENTER_CROP);
                     avatarImg.setBackgroundColor(Color.parseColor("#CCCCCC"));
 
@@ -181,7 +174,6 @@ public class Manatest extends AndroidNonvisibleComponent {
                     }
                     avatarCard.addView(avatarImg);
 
-                    // Clic sur l'Avatar
                     avatarCard.setOnClickListener(new View.OnClickListener() {
                         @Override
                         public void onClick(View v) {
@@ -189,20 +181,19 @@ public class Manatest extends AndroidNonvisibleComponent {
                         }
                     });
 
-                    // --- BULLE DE TEXTE ---
+                    // --- BULLE DE CHAT (Largeur dynamique déverrouillée) ---
                     LinearLayout bubble = new LinearLayout(context);
                     bubble.setOrientation(LinearLayout.VERTICAL);
-                    bubble.setPadding(32, 20, 32, 16);
+                    bubble.setPadding(28, 18, 28, 14);
 
                     GradientDrawable bg = new GradientDrawable();
                     bg.setShape(GradientDrawable.RECTANGLE);
                     bg.setColor(bubbleColor);
-                    bg.setCornerRadius(30f); // Radius 30
+                    bg.setCornerRadius(30f); // Corner Radius 30
                     bubble.setBackground(bg);
 
-                    // Fixation de la largeur max (70% de l'écran pour éviter que le texte soit écrasé)
-                    int maxBubbleWidth = (int) (screenWidth * 0.70);
-                    
+                    int maxBubbleWidth = (int) (screenWidth * 0.72);
+
                     LinearLayout.LayoutParams bubbleParams = new LinearLayout.LayoutParams(
                             LinearLayout.LayoutParams.WRAP_CONTENT,
                             LinearLayout.LayoutParams.WRAP_CONTENT
@@ -215,10 +206,14 @@ public class Manatest extends AndroidNonvisibleComponent {
                     msgTv.setTextColor(textColor);
                     msgTv.setTextSize(15);
                     msgTv.setMaxWidth(maxBubbleWidth);
+                    msgTv.setLayoutParams(new LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                    ));
                     if (customTypeface != null) msgTv.setTypeface(customTypeface);
                     bubble.addView(msgTv);
 
-                    // Heure / Horodatage
+                    // Heure
                     TextView timeTv = new TextView(context);
                     timeTv.setText(timeText);
                     timeTv.setTextColor(Color.argb(180, Color.red(textColor), Color.green(textColor), Color.blue(textColor)));
@@ -235,7 +230,7 @@ public class Manatest extends AndroidNonvisibleComponent {
                     if (customTypeface != null) timeTv.setTypeface(customTypeface);
                     bubble.addView(timeTv);
 
-                    // Assemblage selon l'expéditeur (Autre = Avatar a gauche, Moi = Avatar a droite)
+                    // Placement
                     if (isMe) {
                         row.addView(bubble);
                         row.addView(avatarCard);
@@ -246,7 +241,7 @@ public class Manatest extends AndroidNonvisibleComponent {
 
                     targetLayout.addView(row);
 
-                    // Auto-scroll bas de page
+                    // Scroll bas
                     View parentView = chatContainer.getView();
                     if (parentView instanceof ScrollView) {
                         final ScrollView sv = (ScrollView) parentView;
@@ -266,10 +261,10 @@ public class Manatest extends AndroidNonvisibleComponent {
     }
 
     // =========================================================================
-    // 2. GRILLE PRODUIT 2x2 (Design Épuré + Fond Blanc + Textes Noirs)
+    // 2. GRILLE PRODUIT 2x2 (ÉLÉVATION SUPPRIMÉE)
     // =========================================================================
 
-    @SimpleFunction(description = "Génère la grille 2x2 épurée avec fond blanc et chargement d'images serveur.")
+    @SimpleFunction(description = "Génère la grille 2x2 sans élévation.")
     public void BuildProductGridFromJson(
             final AndroidViewComponent scrollContainer,
             final String jsonData) {
@@ -299,7 +294,6 @@ public class Manatest extends AndroidNonvisibleComponent {
                                 for (int i = 0; i < array.length(); i++) {
                                     JSONObject item = array.getJSONObject(i);
                                     
-                                    // UID dynamique provenant de la base de données
                                     final String uid = item.optString("uid", String.valueOf(i));
                                     String imageStr = item.optString("image", "");
                                     String titleStr = item.optString("title", "");
@@ -318,25 +312,25 @@ public class Manatest extends AndroidNonvisibleComponent {
                                         targetLayout.addView(currentRow);
                                     }
 
-                                    // Carte du produit avec Fond Blanc
+                                    // Carte du produit sans aucune élévation
                                     CardView card = new CardView(context);
                                     LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(cardWidth, cardHeight);
                                     cardParams.setMargins(10, 8, 10, 8);
                                     card.setLayoutParams(cardParams);
                                     card.setRadius(20f);
-                                    card.setCardBackgroundColor(Color.WHITE); // Suppression du fond gris
-                                    card.setCardElevation(4f);
+                                    card.setCardBackgroundColor(Color.WHITE);
+                                    card.setCardElevation(0f);       // Ombre désactivée
+                                    card.setMaxCardElevation(0f);    // Force élévation 0
 
-                                    // Conteneur interne
                                     LinearLayout inner = new LinearLayout(context);
                                     inner.setOrientation(LinearLayout.VERTICAL);
-                                    inner.setBackgroundColor(Color.WHITE); // Fond blanc pur
+                                    inner.setBackgroundColor(Color.WHITE);
                                     inner.setLayoutParams(new LinearLayout.LayoutParams(
                                             LinearLayout.LayoutParams.MATCH_PARENT,
                                             LinearLayout.LayoutParams.MATCH_PARENT
                                     ));
 
-                                    // 1. Image du produit
+                                    // Image
                                     ImageView img = new ImageView(context);
                                     LinearLayout.LayoutParams imgParams = new LinearLayout.LayoutParams(
                                             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -349,7 +343,7 @@ public class Manatest extends AndroidNonvisibleComponent {
                                     loadImageAsync(img, imageStr);
                                     inner.addView(img);
 
-                                    // 2. Titre (Texte Noir Uniquement)
+                                    // Titre
                                     TextView titleTv = new TextView(context);
                                     titleTv.setText(titleStr);
                                     titleTv.setTextColor(Color.BLACK);
@@ -359,19 +353,18 @@ public class Manatest extends AndroidNonvisibleComponent {
                                     if (customTypeface != null) titleTv.setTypeface(customTypeface);
                                     inner.addView(titleTv);
 
-                                    // 3. Prix (Texte Noir et GRAS)
+                                    // Prix (Noir + Gras)
                                     TextView priceTv = new TextView(context);
                                     priceTv.setText(priceStr);
-                                    priceTv.setTextColor(Color.BLACK); // Noir pur
+                                    priceTv.setTextColor(Color.BLACK);
                                     priceTv.setTextSize(14);
-                                    priceTv.setTypeface(null, Typeface.BOLD); // En Gras
+                                    priceTv.setTypeface(null, Typeface.BOLD);
                                     priceTv.setPadding(14, 2, 14, 12);
                                     if (customTypeface != null) priceTv.setTypeface(customTypeface, Typeface.BOLD);
                                     inner.addView(priceTv);
 
                                     card.addView(inner);
 
-                                    // Événement Clic sur la Carte
                                     card.setOnClickListener(new View.OnClickListener() {
                                         @Override
                                         public void onClick(View v) {
