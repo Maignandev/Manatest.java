@@ -2,6 +2,7 @@ package com.manatest.utils;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.util.TypedValue;
@@ -38,6 +39,7 @@ public class Manatest extends AndroidNonvisibleComponent {
     private final Context context;
     private final Activity activity;
     private Typeface customTypeface = null;
+    private int radioButtonColor = Color.parseColor("#C01A1A1B");
 
     public Manatest(ComponentContainer container) {
         super(container.$form());
@@ -65,18 +67,25 @@ public class Manatest extends AndroidNonvisibleComponent {
         );
     }
 
-    // =========================================================================
-    // ÉVÉNEMENT KODULAR
-    // =========================================================================
+    @SimpleFunction(description = "Charge une police personnalisée à partir du nom du fichier dans les Assets.")
+    public void LoadCustomFont(String fontName) {
+        try {
+            customTypeface = Typeface.createFromAsset(context.getAssets(), fontName);
+        } catch (Exception e) {
+            e.printStackTrace();
+            customTypeface = null;
+        }
+    }
+
+    @SimpleFunction(description = "Définit la couleur des boutons radio (sélectionné et non sélectionné).")
+    public void SetRadioButtonColor(int color) {
+        this.radioButtonColor = color;
+    }
 
     @SimpleEvent(description = "Déclenché lors du choix d'une catégorie.")
     public void OnCategorySelected(String categoryId, String categoryTitle) {
         EventDispatcher.dispatchEvent(this, "OnCategorySelected", categoryId, categoryTitle);
     }
-
-    // =========================================================================
-    // FONCTION D'AFFICHAGE DE LA LISTE
-    // =========================================================================
 
     @SimpleFunction(description = "Génère la liste dynamique des catégories et sous-catégories à partir d'un JSON.")
     public void BuildCategoryListFromJson(
@@ -105,9 +114,11 @@ public class Manatest extends AndroidNonvisibleComponent {
                                         ViewGroup.LayoutParams.WRAP_CONTENT
                                 ));
 
-                                int colorTitle = Color.parseColor("#1F1F1F");
-                                int colorItem = Color.parseColor("#4A4A4A");
+                                int colorTitle = Color.parseColor("#E91A1A1B");
+                                int colorItem = Color.parseColor("#C01A1A1B");
                                 int colorDivider = Color.parseColor("#F0F0F0");
+
+                                ColorStateList radioColorList = ColorStateList.valueOf(radioButtonColor);
 
                                 for (int i = 0; i < mainArray.length(); i++) {
                                     JSONObject categoryObj = mainArray.getJSONObject(i);
@@ -117,9 +128,11 @@ public class Manatest extends AndroidNonvisibleComponent {
                                     TextView header = new TextView(activity);
                                     header.setText(">  " + categoryName);
                                     header.setTextColor(colorTitle);
-                                    header.setTextSize(20);
+                                    header.setTextSize(18);
                                     header.setTypeface(null, Typeface.BOLD);
-                                    if (customTypeface != null) header.setTypeface(customTypeface, Typeface.BOLD);
+                                    if (customTypeface != null) {
+                                        header.setTypeface(customTypeface, Typeface.BOLD);
+                                    }
                                     header.setPadding(0, dpToPx(16), 0, dpToPx(8));
                                     
                                     groupeUnique.addView(header);
@@ -134,8 +147,12 @@ public class Manatest extends AndroidNonvisibleComponent {
                                             bouton.setId(View.generateViewId());
                                             bouton.setText(subTitle);
                                             bouton.setTextColor(colorItem);
-                                            bouton.setTextSize(16);
-                                            if (customTypeface != null) bouton.setTypeface(customTypeface);
+                                            bouton.setTextSize(13);
+                                            bouton.setButtonTintList(radioColorList);
+
+                                            if (customTypeface != null) {
+                                                bouton.setTypeface(customTypeface);
+                                            }
                                             
                                             LinearLayout.LayoutParams pBouton = new LinearLayout.LayoutParams(
                                                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -143,7 +160,7 @@ public class Manatest extends AndroidNonvisibleComponent {
                                             );
                                             bouton.setLayoutParams(pBouton);
 
-                                            int padVertical = dpToPx(14);
+                                            int padVertical = dpToPx(12);
                                             int padHorizontal = dpToPx(8);
                                             bouton.setPadding(padHorizontal, padVertical, padHorizontal, padVertical);
                                             bouton.setTag(subId);
