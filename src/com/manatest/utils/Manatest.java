@@ -33,7 +33,7 @@ import java.net.URL;
 
 @DesignerComponent(
         version = 1,
-        description = "Extension Manatest (Bulle ultra-arrondie, Avatar rond parfait et Grille 2x2 intacte).",
+        description = "Extension Manatest (Avatar réduit, non zoomé et parfaitement rond).",
         category = ComponentCategory.EXTENSION,
         nonVisible = true
 )
@@ -125,10 +125,10 @@ public class Manatest extends AndroidNonvisibleComponent {
     }
 
     // =========================================================================
-    // 1. BULLE DE CHAT DYNAMIQUE (Avatar Rond + Bulle Ultra Arrondie)
+    // 1. BULLE DE CHAT DYNAMIQUE (Avatar 32dp Réduit & Image Adaptée)
     // =========================================================================
 
-    @SimpleFunction(description = "Ajoute une bulle de chat avec avatar rond et bords ultra arrondis.")
+    @SimpleFunction(description = "Ajoute une bulle de chat avec un petit avatar rond.")
     public void AddChatBubble(
             final AndroidViewComponent chatContainer,
             final String messageText,
@@ -156,25 +156,30 @@ public class Manatest extends AndroidNonvisibleComponent {
                             LinearLayout.LayoutParams.MATCH_PARENT,
                             LinearLayout.LayoutParams.WRAP_CONTENT
                     );
-                    rowParams.setMargins(dpToPx(8), dpToPx(6), dpToPx(8), dpToPx(6));
+                    rowParams.setMargins(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4));
                     row.setLayoutParams(rowParams);
 
-                    // --- AVATAR ROND PARFAIT (40dp x 40dp, Radius 20dp) ---
-                    int avatarSizePx = dpToPx(40);
+                    // --- AVATAR ROND RÉDUIT (32dp x 32dp, Radius 16dp) ---
+                    int avatarSizePx = dpToPx(32);
 
                     CardView avatarCard = new CardView(context);
                     LinearLayout.LayoutParams avatarParams = new LinearLayout.LayoutParams(avatarSizePx, avatarSizePx);
-                    avatarParams.gravity = Gravity.BOTTOM;
-                    avatarParams.setMargins(dpToPx(4), 0, dpToPx(4), 0);
+                    avatarParams.gravity = Gravity.CENTER_VERTICAL;
+                    avatarParams.setMargins(dpToPx(6), 0, dpToPx(6), 0);
                     avatarCard.setLayoutParams(avatarParams);
-                    avatarCard.setRadius(avatarSizePx / 2f); // Cercle parfait
+                    avatarCard.setRadius(avatarSizePx / 2f); // Rond parfait
                     avatarCard.setCardElevation(0f);
                     avatarCard.setMaxCardElevation(0f);
+                    avatarCard.setCardBackgroundColor(Color.parseColor("#E0E0E0"));
 
                     ImageView avatarImg = new ImageView(context);
-                    avatarImg.setLayoutParams(new ViewGroup.LayoutParams(avatarSizePx, avatarSizePx));
-                    avatarImg.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                    avatarImg.setBackgroundColor(Color.parseColor("#CCCCCC"));
+                    avatarImg.setLayoutParams(new ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT
+                    ));
+                    // Empêche le sur-zoom / rognage de l'image
+                    avatarImg.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+                    avatarImg.setPadding(dpToPx(4), dpToPx(4), dpToPx(4), dpToPx(4));
 
                     if (avatarUrl != null && !avatarUrl.isEmpty()) {
                         loadImageAsync(avatarImg, avatarUrl);
@@ -188,15 +193,15 @@ public class Manatest extends AndroidNonvisibleComponent {
                         }
                     });
 
-                    // --- BULLE DE TEXTE ULTRA ARRONDIE ---
+                    // --- BULLE DE TEXTE ---
                     LinearLayout bubble = new LinearLayout(context);
                     bubble.setOrientation(LinearLayout.VERTICAL);
-                    bubble.setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(10));
+                    bubble.setPadding(dpToPx(16), dpToPx(10), dpToPx(16), dpToPx(10));
 
                     GradientDrawable bg = new GradientDrawable();
                     bg.setShape(GradientDrawable.RECTANGLE);
                     bg.setColor(bubbleColor);
-                    bg.setCornerRadius(dpToPx(22)); // Bords ultra-arrondis (44dp de diamètre)
+                    bg.setCornerRadius(dpToPx(22)); // Forme pilule/arrondie
                     bubble.setBackground(bg);
 
                     int maxBubbleWidth = (int) (screenWidth * 0.72);
@@ -220,22 +225,24 @@ public class Manatest extends AndroidNonvisibleComponent {
                     if (customTypeface != null) msgTv.setTypeface(customTypeface);
                     bubble.addView(msgTv);
 
-                    // Texte de l'Heure
-                    TextView timeTv = new TextView(context);
-                    timeTv.setText(timeText);
-                    timeTv.setTextColor(Color.argb(180, Color.red(textColor), Color.green(textColor), Color.blue(textColor)));
-                    timeTv.setTextSize(10);
-                    
-                    LinearLayout.LayoutParams timeParams = new LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.WRAP_CONTENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT
-                    );
-                    timeParams.gravity = Gravity.END;
-                    timeParams.setMargins(0, dpToPx(4), 0, 0);
-                    timeTv.setLayoutParams(timeParams);
+                    // Texte de l'Heure (si fourni)
+                    if (timeText != null && !timeText.isEmpty()) {
+                        TextView timeTv = new TextView(context);
+                        timeTv.setText(timeText);
+                        timeTv.setTextColor(Color.argb(180, Color.red(textColor), Color.green(textColor), Color.blue(textColor)));
+                        timeTv.setTextSize(10);
+                        
+                        LinearLayout.LayoutParams timeParams = new LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.WRAP_CONTENT,
+                                LinearLayout.LayoutParams.WRAP_CONTENT
+                        );
+                        timeParams.gravity = Gravity.END;
+                        timeParams.setMargins(0, dpToPx(2), 0, 0);
+                        timeTv.setLayoutParams(timeParams);
 
-                    if (customTypeface != null) timeTv.setTypeface(customTypeface);
-                    bubble.addView(timeTv);
+                        if (customTypeface != null) timeTv.setTypeface(customTypeface);
+                        bubble.addView(timeTv);
+                    }
 
                     // Assemblage
                     if (isMe) {
@@ -248,7 +255,7 @@ public class Manatest extends AndroidNonvisibleComponent {
 
                     targetLayout.addView(row);
 
-                    // Defilement automatique
+                    // Défilement automatique
                     View parentView = chatContainer.getView();
                     if (parentView instanceof ScrollView) {
                         final ScrollView sv = (ScrollView) parentView;
@@ -268,7 +275,7 @@ public class Manatest extends AndroidNonvisibleComponent {
     }
 
     // =========================================================================
-    // 2. GRILLE PRODUIT 2x2 (CONSERVÉE INTACTE)
+    // 2. GRILLE PRODUIT 2x2 (INCHANGÉE)
     // =========================================================================
 
     @SimpleFunction(description = "Génère la grille 2x2 sans élévation.")
@@ -405,4 +412,3 @@ public class Manatest extends AndroidNonvisibleComponent {
         EventDispatcher.dispatchEvent(this, "OnAvatarClick", isMe);
     }
 }
-
