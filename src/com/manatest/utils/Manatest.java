@@ -1,3 +1,7 @@
+package com.manatest.utils;
+
+import android.app.Activity;
+import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.util.TypedValue;
@@ -8,150 +12,175 @@ import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.TextView;
 
+import com.google.appinventor.components.annotations.DesignerComponent;
 import com.google.appinventor.components.annotations.SimpleEvent;
 import com.google.appinventor.components.annotations.SimpleFunction;
+import com.google.appinventor.components.annotations.SimpleObject;
+import com.google.appinventor.components.common.ComponentCategory;
+import com.google.appinventor.components.runtime.AndroidNonvisibleComponent;
 import com.google.appinventor.components.runtime.AndroidViewComponent;
+import com.google.appinventor.components.runtime.ComponentContainer;
 import com.google.appinventor.components.runtime.EventDispatcher;
 import com.google.appinventor.components.runtime.util.AsynchUtil;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-// --- VARIABLES PRIVÉES ET MÉTHODES UTILITAIRES ---
+@DesignerComponent(
+        version = 1,
+        description = "Extension de test pour la liste dynamique de catégories.",
+        category = ComponentCategory.EXTENSION,
+        nonVisible = true
+)
+@SimpleObject(external = true)
+public class Manatest extends AndroidNonvisibleComponent {
 
-private Typeface customTypeface = null;
+    private final Context context;
+    private final Activity activity;
+    private Typeface customTypeface = null;
 
-private ViewGroup getRealLayout(AndroidViewComponent component) {
-    View view = component.getView();
-    if (view instanceof ViewGroup) {
-        ViewGroup vg = (ViewGroup) view;
-        if (vg.getChildCount() > 0 && vg.getChildAt(0) instanceof ViewGroup) {
-            return (ViewGroup) vg.getChildAt(0);
-        }
-        return vg;
+    public Manatest(ComponentContainer container) {
+        super(container.$form());
+        this.context = container.$context();
+        this.activity = (Activity) container.$context();
     }
-    return null;
-}
 
-private int dpToPx(int dp) {
-    return (int) TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_DIP,
-            dp,
-            context.getResources().getDisplayMetrics()
-    );
-}
+    private ViewGroup getRealLayout(AndroidViewComponent component) {
+        View view = component.getView();
+        if (view instanceof ViewGroup) {
+            ViewGroup vg = (ViewGroup) view;
+            if (vg.getChildCount() > 0 && vg.getChildAt(0) instanceof ViewGroup) {
+                return (ViewGroup) vg.getChildAt(0);
+            }
+            return vg;
+        }
+        return null;
+    }
 
-// --- ÉVÉNEMENT KODULAR ---
+    private int dpToPx(int dp) {
+        return (int) TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP,
+                dp,
+                context.getResources().getDisplayMetrics()
+        );
+    }
 
-@SimpleEvent(description = "Déclenché lors du choix d'une catégorie.")
-public void OnCategorySelected(String categoryId, String categoryTitle) {
-    EventDispatcher.dispatchEvent(this, "OnCategorySelected", categoryId, categoryTitle);
-}
+    // =========================================================================
+    // ÉVÉNEMENT KODULAR
+    // =========================================================================
 
-// --- FONCTION PRINCIPALE ---
+    @SimpleEvent(description = "Déclenché lors du choix d'une catégorie.")
+    public void OnCategorySelected(String categoryId, String categoryTitle) {
+        EventDispatcher.dispatchEvent(this, "OnCategorySelected", categoryId, categoryTitle);
+    }
 
-@SimpleFunction(description = "Génère la liste dynamique des catégories et sous-catégories à partir d'un JSON.")
-public void BuildCategoryListFromJson(
-        final AndroidViewComponent listContainer,
-        final String categoriesJson) {
+    // =========================================================================
+    // FONCTION D'AFFICHAGE DE LA LISTE
+    // =========================================================================
 
-    AsynchUtil.runAsynchronously(new Runnable() {
-        @Override
-        public void run() {
-            try {
-                final JSONArray mainArray = new JSONArray(categoriesJson);
+    @SimpleFunction(description = "Génère la liste dynamique des catégories et sous-catégories à partir d'un JSON.")
+    public void BuildCategoryListFromJson(
+            final AndroidViewComponent listContainer,
+            final String categoriesJson) {
 
-                activity.runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        try {
-                            ViewGroup targetLayout = getRealLayout(listContainer);
-                            if (targetLayout == null) return;
+        AsynchUtil.runAsynchronously(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    final JSONArray mainArray = new JSONArray(categoriesJson);
 
-                            targetLayout.removeAllViews();
+                    activity.runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                ViewGroup targetLayout = getRealLayout(listContainer);
+                                if (targetLayout == null) return;
 
-                            final RadioGroup groupeUnique = new RadioGroup(activity);
-                            groupeUnique.setOrientation(LinearLayout.VERTICAL);
-                            groupeUnique.setLayoutParams(new LinearLayout.LayoutParams(
-                                    ViewGroup.LayoutParams.MATCH_PARENT,
-                                    ViewGroup.LayoutParams.WRAP_CONTENT
-                            ));
+                                targetLayout.removeAllViews();
 
-                            int colorTitle = Color.parseColor("#1F1F1F");
-                            int colorItem = Color.parseColor("#4A4A4A");
-                            int colorDivider = Color.parseColor("#F0F0F0");
+                                final RadioGroup groupeUnique = new RadioGroup(activity);
+                                groupeUnique.setOrientation(LinearLayout.VERTICAL);
+                                groupeUnique.setLayoutParams(new LinearLayout.LayoutParams(
+                                        ViewGroup.LayoutParams.MATCH_PARENT,
+                                        ViewGroup.LayoutParams.WRAP_CONTENT
+                                ));
 
-                            for (int i = 0; i < mainArray.length(); i++) {
-                                JSONObject categoryObj = mainArray.getJSONObject(i);
-                                String categoryName = categoryObj.optString("title", "");
-                                JSONArray subCategories = categoryObj.optJSONArray("subcategories");
+                                int colorTitle = Color.parseColor("#1F1F1F");
+                                int colorItem = Color.parseColor("#4A4A4A");
+                                int colorDivider = Color.parseColor("#F0F0F0");
 
-                                TextView header = new TextView(activity);
-                                header.setText(">  " + categoryName);
-                                header.setTextColor(colorTitle);
-                                header.setTextSize(20);
-                                header.setTypeface(null, Typeface.BOLD);
-                                if (customTypeface != null) header.setTypeface(customTypeface, Typeface.BOLD);
-                                header.setPadding(0, dpToPx(16), 0, dpToPx(8));
-                                
-                                groupeUnique.addView(header);
+                                for (int i = 0; i < mainArray.length(); i++) {
+                                    JSONObject categoryObj = mainArray.getJSONObject(i);
+                                    String categoryName = categoryObj.optString("title", "");
+                                    JSONArray subCategories = categoryObj.optJSONArray("subcategories");
 
-                                if (subCategories != null) {
-                                    for (int j = 0; j < subCategories.length(); j++) {
-                                        JSONObject subObj = subCategories.getJSONObject(j);
-                                        final String subId = subObj.optString("id", "");
-                                        final String subTitle = subObj.optString("title", "");
+                                    TextView header = new TextView(activity);
+                                    header.setText(">  " + categoryName);
+                                    header.setTextColor(colorTitle);
+                                    header.setTextSize(20);
+                                    header.setTypeface(null, Typeface.BOLD);
+                                    if (customTypeface != null) header.setTypeface(customTypeface, Typeface.BOLD);
+                                    header.setPadding(0, dpToPx(16), 0, dpToPx(8));
+                                    
+                                    groupeUnique.addView(header);
 
-                                        RadioButton bouton = new RadioButton(activity);
-                                        bouton.setId(View.generateViewId());
-                                        bouton.setText(subTitle);
-                                        bouton.setTextColor(colorItem);
-                                        bouton.setTextSize(16);
-                                        if (customTypeface != null) bouton.setTypeface(customTypeface);
-                                        
-                                        LinearLayout.LayoutParams pBouton = new LinearLayout.LayoutParams(
-                                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                                ViewGroup.LayoutParams.WRAP_CONTENT
-                                        );
-                                        bouton.setLayoutParams(pBouton);
+                                    if (subCategories != null) {
+                                        for (int j = 0; j < subCategories.length(); j++) {
+                                            JSONObject subObj = subCategories.getJSONObject(j);
+                                            final String subId = subObj.optString("id", "");
+                                            final String subTitle = subObj.optString("title", "");
 
-                                        int padVertical = dpToPx(14);
-                                        int padHorizontal = dpToPx(8);
-                                        bouton.setPadding(padHorizontal, padVertical, padHorizontal, padVertical);
-                                        bouton.setTag(subId);
+                                            RadioButton bouton = new RadioButton(activity);
+                                            bouton.setId(View.generateViewId());
+                                            bouton.setText(subTitle);
+                                            bouton.setTextColor(colorItem);
+                                            bouton.setTextSize(16);
+                                            if (customTypeface != null) bouton.setTypeface(customTypeface);
+                                            
+                                            LinearLayout.LayoutParams pBouton = new LinearLayout.LayoutParams(
+                                                    ViewGroup.LayoutParams.MATCH_PARENT,
+                                                    ViewGroup.LayoutParams.WRAP_CONTENT
+                                            );
+                                            bouton.setLayoutParams(pBouton);
 
-                                        bouton.setOnClickListener(new View.OnClickListener() {
-                                            @Override
-                                            public void onClick(View v) {
-                                                OnCategorySelected(subId, subTitle);
-                                            }
-                                        });
+                                            int padVertical = dpToPx(14);
+                                            int padHorizontal = dpToPx(8);
+                                            bouton.setPadding(padHorizontal, padVertical, padHorizontal, padVertical);
+                                            bouton.setTag(subId);
 
-                                        groupeUnique.addView(bouton);
+                                            bouton.setOnClickListener(new View.OnClickListener() {
+                                                @Override
+                                                public void onClick(View v) {
+                                                    OnCategorySelected(subId, subTitle);
+                                                }
+                                            });
 
-                                        View divider = new View(activity);
-                                        LinearLayout.LayoutParams pDivider = new LinearLayout.LayoutParams(
-                                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                                dpToPx(1)
-                                        );
-                                        divider.setLayoutParams(pDivider);
-                                        divider.setBackgroundColor(colorDivider);
+                                            groupeUnique.addView(bouton);
 
-                                        groupeUnique.addView(divider);
+                                            View divider = new View(activity);
+                                            LinearLayout.LayoutParams pDivider = new LinearLayout.LayoutParams(
+                                                    ViewGroup.LayoutParams.MATCH_PARENT,
+                                                    dpToPx(1)
+                                            );
+                                            divider.setLayoutParams(pDivider);
+                                            divider.setBackgroundColor(colorDivider);
+
+                                            groupeUnique.addView(divider);
+                                        }
                                     }
                                 }
+
+                                targetLayout.addView(groupeUnique);
+
+                            } catch (Exception e) {
+                                e.printStackTrace();
                             }
-
-                            targetLayout.addView(groupeUnique);
-
-                        } catch (Exception e) {
-                            e.printStackTrace();
                         }
-                    }
-                });
-            } catch (Exception e) {
-                e.printStackTrace();
+                    });
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
             }
-        }
-    });
+        });
+    }
 }
