@@ -44,11 +44,25 @@ public class Manatest extends AndroidNonvisibleComponent {
         this.activity = (Activity) container.$context();
     }
 
+    // Helper pour récupérer le vrai conteneur de disposition dans Kodular
+    private ViewGroup getRealLayout(AndroidViewComponent component) {
+        View view = component.getView();
+        if (view instanceof ViewGroup) {
+            ViewGroup vg = (ViewGroup) view;
+            // Si c'est un ScrollView / FrameLayout Kodular, prendre son premier enfant
+            if (vg.getChildCount() > 0 && vg.getChildAt(0) instanceof ViewGroup) {
+                return (ViewGroup) vg.getChildAt(0);
+            }
+            return vg;
+        }
+        return null;
+    }
+
     // =========================================================================
     // POLICE PERSONNALISÉE
     // =========================================================================
 
-    @SimpleFunction(description = "Charge une police personnalisée (.ttf ou .otf) depuis les Assets ou un chemin du téléphone.")
+    @SimpleFunction(description = "Charge une police personnalisée (.ttf ou .otf).")
     public void LoadCustomFont(String fontPath) {
         try {
             if (fontPath.startsWith("/")) {
@@ -63,10 +77,10 @@ public class Manatest extends AndroidNonvisibleComponent {
     }
 
     // =========================================================================
-    // 1. CHAT BULLE DYNAMIQUE (Duplication, Scroll, Heure Fixe)
+    // 1. BULLE DE CHAT DYNAMIQUE (Fixe l'accumulation et l'alignement)
     // =========================================================================
 
-    @SimpleFunction(description = "Ajoute une nouvelle bulle de chat indépendante avec heure fixe en bas à droite.")
+    @SimpleFunction(description = "Ajoute une nouvelle bulle de chat indépendante.")
     public void AddChatBubble(
             final AndroidViewComponent chatContainer,
             final String messageText,
@@ -79,59 +93,47 @@ public class Manatest extends AndroidNonvisibleComponent {
             @Override
             public void run() {
                 try {
-                    View view = chatContainer.getView();
-                    ViewGroup targetLayout = null;
-
-                    // Supporte ScrollArrangement et VerticalArrangement
-                    if (view instanceof ScrollView) {
-                        ScrollView sv = (ScrollView) view;
-                        if (sv.getChildCount() > 0) {
-                            targetLayout = (ViewGroup) sv.getChildAt(0);
-                        } else {
-                            LinearLayout content = new LinearLayout(context);
-                            content.setOrientation(LinearLayout.VERTICAL);
-                            sv.addView(content, new ViewGroup.LayoutParams(
-                                    ViewGroup.LayoutParams.MATCH_PARENT,
-                                    ViewGroup.LayoutParams.WRAP_CONTENT
-                            ));
-                            targetLayout = content;
-                        }
-                    } else if (view instanceof ViewGroup) {
-                        targetLayout = (ViewGroup) view;
-                    }
-
+                    ViewGroup targetLayout = getRealLayout(chatContainer);
                     if (targetLayout == null) return;
 
-                    // Bulle de chat principale (Conteneur du message + heure)
+                    // Ligne externe complète (Largeur écran) pour aligner la bulle à droite ou à gauche
+                    LinearLayout row = new LinearLayout(context);
+                    row.setOrientation(LinearLayout.HORIZONTAL);
+                    row.setGravity(isMe ? Gravity.END : Gravity.START);
+                    
+                    LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                    );
+                    rowParams.setMargins(12, 8, 12, 8);
+                    row.setLayoutParams(rowParams);
+
+                    // Bulle verticale
                     LinearLayout bubble = new LinearLayout(context);
                     bubble.setOrientation(LinearLayout.VERTICAL);
-                    bubble.setPadding(28, 20, 28, 16);
+                    bubble.setPadding(30, 20, 30, 16);
 
-                    // Arrière-plan de la bulle avec coins arrondis
                     GradientDrawable bg = new GradientDrawable();
                     bg.setShape(GradientDrawable.RECTANGLE);
                     bg.setColor(bubbleColor);
                     bg.setCornerRadius(32f);
                     bubble.setBackground(bg);
 
-                    // Texte du message
+                    // Texte du Message
                     TextView msgTv = new TextView(context);
                     msgTv.setText(messageText);
                     msgTv.setTextColor(textColor);
                     msgTv.setTextSize(15);
-                    if (customTypeface != null) {
-                        msgTv.setTypeface(customTypeface);
-                    }
+                    if (customTypeface != null) msgTv.setTypeface(customTypeface);
 
-                    // Limite la largeur maximale à 75% de l'écran
-                    int maxWidth = (int) (context.getResources().getDisplayMetrics().widthPixels * 0.75);
+                    int maxWidth = (int) (context.getResources().getDisplayMetrics().widthPixels * 0.72);
                     msgTv.setMaxWidth(maxWidth);
                     bubble.addView(msgTv);
 
-                    // Texte de l'heure (Fixé en bas à droite de la bulle)
+                    // Texte de l'Heure (Ancré à droite dans la bulle)
                     TextView timeTv = new TextView(context);
                     timeTv.setText(timeText);
-                    timeTv.setTextColor(Color.argb(170, Color.red(textColor), Color.green(textColor), Color.blue(textColor)));
+                    timeTv.setTextColor(Color.argb(180, Color.red(textColor), Color.green(textColor), Color.blue(textColor)));
                     timeTv.setTextSize(10);
                     
                     LinearLayout.LayoutParams timeParams = new LinearLayout.LayoutParams(
@@ -139,29 +141,19 @@ public class Manatest extends AndroidNonvisibleComponent {
                             LinearLayout.LayoutParams.WRAP_CONTENT
                     );
                     timeParams.gravity = Gravity.END;
-                    timeParams.setMargins(0, 6, 0, 0);
+                    timeParams.setMargins(0, 8, 0, 0);
                     timeTv.setLayoutParams(timeParams);
 
-                    if (customTypeface != null) {
-                        timeTv.setTypeface(customTypeface);
-                    }
+                    if (customTypeface != null) timeTv.setTypeface(customTypeface);
                     bubble.addView(timeTv);
 
-                    // Positionnement de la bulle sur la ligne (Gauche / Droite)
-                    LinearLayout.LayoutParams bubbleParams = new LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.WRAP_CONTENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT
-                    );
-                    bubbleParams.gravity = isMe ? Gravity.END : Gravity.START;
-                    bubbleParams.setMargins(16, 8, 16, 8);
-                    bubble.setLayoutParams(bubbleParams);
+                    row.addView(bubble);
+                    targetLayout.addView(row);
 
-                    // Ajout de la bulle au conteneur principal
-                    targetLayout.addView(bubble);
-
-                    // Auto-Scroll vers le bas si le parent est un ScrollView
-                    if (view instanceof ScrollView) {
-                        final ScrollView sv = (ScrollView) view;
+                    // Auto-Scroll vers le bas
+                    View parentView = chatContainer.getView();
+                    if (parentView instanceof ScrollView) {
+                        final ScrollView sv = (ScrollView) parentView;
                         sv.post(new Runnable() {
                             @Override
                             public void run() {
@@ -178,10 +170,10 @@ public class Manatest extends AndroidNonvisibleComponent {
     }
 
     // =========================================================================
-    // 2. GRILLE PRODUIT 2x2 INFINIE (Correction de l'affichage complet)
+    // 2. GRILLE PRODUIT 2x2 (Supporte un nombre infini de produits)
     // =========================================================================
 
-    @SimpleFunction(description = "Génère une grille 2x2 dynamique pour l'ensemble des produits du JSON.")
+    @SimpleFunction(description = "Génère une grille 2x2 dynamique pour TOUS les produits du JSON.")
     public void BuildProductGridFromJson(
             final AndroidViewComponent scrollContainer,
             final String jsonData) {
@@ -198,28 +190,13 @@ public class Manatest extends AndroidNonvisibleComponent {
                         @Override
                         public void run() {
                             try {
-                                View view = scrollContainer.getView();
-                                ViewGroup targetLayout = null;
-
-                                if (view instanceof ScrollView) {
-                                    ScrollView sv = (ScrollView) view;
-                                    sv.removeAllViews();
-                                    LinearLayout verticalContent = new LinearLayout(context);
-                                    verticalContent.setOrientation(LinearLayout.VERTICAL);
-                                    sv.addView(verticalContent, new ViewGroup.LayoutParams(
-                                            ViewGroup.LayoutParams.MATCH_PARENT,
-                                            ViewGroup.LayoutParams.WRAP_CONTENT
-                                    ));
-                                    targetLayout = verticalContent;
-                                } else if (view instanceof ViewGroup) {
-                                    targetLayout = (ViewGroup) view;
-                                    targetLayout.removeAllViews();
-                                }
-
+                                ViewGroup targetLayout = getRealLayout(scrollContainer);
                                 if (targetLayout == null) return;
 
-                                int cardWidth = (int) (screenWidth * 0.45);   // ~50% de la largeur
-                                int cardHeight = (int) (screenHeight * 0.30);  // 30% de la hauteur de l'écran
+                                targetLayout.removeAllViews();
+
+                                int cardWidth = (int) (screenWidth * 0.44);   // ~44% de largeur
+                                int cardHeight = (int) (screenHeight * 0.28); // 28% de la hauteur de l'écran
 
                                 LinearLayout currentRow = null;
 
@@ -229,7 +206,7 @@ public class Manatest extends AndroidNonvisibleComponent {
                                     String titleStr = item.optString("title", "");
                                     String priceStr = item.optString("price", "");
 
-                                    // Création d'une nouvelle ligne horizontale tous les 2 produits
+                                    // Créer une nouvelle ligne tous les 2 produits
                                     if (i % 2 == 0) {
                                         currentRow = new LinearLayout(context);
                                         currentRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -238,20 +215,20 @@ public class Manatest extends AndroidNonvisibleComponent {
                                                 LinearLayout.LayoutParams.MATCH_PARENT,
                                                 LinearLayout.LayoutParams.WRAP_CONTENT
                                         );
-                                        rowParams.setMargins(0, 4, 0, 4);
+                                        rowParams.setMargins(0, 8, 0, 8);
                                         currentRow.setLayoutParams(rowParams);
                                         targetLayout.addView(currentRow);
                                     }
 
-                                    // Carte du produit
+                                    // Carte du Produit
                                     CardView card = new CardView(context);
                                     LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(cardWidth, cardHeight);
-                                    cardParams.setMargins(8, 8, 8, 8);
+                                    cardParams.setMargins(10, 8, 10, 8);
                                     card.setLayoutParams(cardParams);
-                                    card.setRadius(16f);
-                                    card.setCardElevation(4f);
+                                    card.setRadius(20f);
+                                    card.setCardElevation(6f);
 
-                                    // Conteneur interne de la carte
+                                    // Layout Interne
                                     LinearLayout inner = new LinearLayout(context);
                                     inner.setOrientation(LinearLayout.VERTICAL);
                                     inner.setLayoutParams(new LinearLayout.LayoutParams(
@@ -259,7 +236,7 @@ public class Manatest extends AndroidNonvisibleComponent {
                                             LinearLayout.LayoutParams.MATCH_PARENT
                                     ));
 
-                                    // Image
+                                    // 1. Image Placeholder
                                     ImageView img = new ImageView(context);
                                     LinearLayout.LayoutParams imgParams = new LinearLayout.LayoutParams(
                                             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -267,35 +244,32 @@ public class Manatest extends AndroidNonvisibleComponent {
                                     );
                                     img.setLayoutParams(imgParams);
                                     img.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                                    img.setBackgroundColor(Color.parseColor("#EEEEEE"));
+                                    img.setBackgroundColor(Color.parseColor("#E0E0E0"));
                                     inner.addView(img);
 
-                                    // Titre
+                                    // 2. Titre
                                     TextView titleTv = new TextView(context);
                                     titleTv.setText(titleStr);
                                     titleTv.setTextColor(Color.BLACK);
-                                    titleTv.setTextSize(14);
-                                    titleTv.setPadding(12, 6, 12, 0);
-                                    if (customTypeface != null) {
-                                        titleTv.setTypeface(customTypeface);
-                                    }
+                                    titleTv.setTextSize(13);
+                                    titleTv.setMaxLines(2);
+                                    titleTv.setPadding(12, 8, 12, 0);
+                                    if (customTypeface != null) titleTv.setTypeface(customTypeface);
                                     inner.addView(titleTv);
 
-                                    // Prix
+                                    // 3. Prix
                                     TextView priceTv = new TextView(context);
                                     priceTv.setText(priceStr);
-                                    priceTv.setTextColor(Color.BLACK);
-                                    priceTv.setTextSize(13);
+                                    priceTv.setTextColor(Color.parseColor("#1B5E20"));
+                                    priceTv.setTextSize(14);
                                     priceTv.setTypeface(null, Typeface.BOLD);
-                                    priceTv.setPadding(12, 2, 12, 10);
-                                    if (customTypeface != null) {
-                                        priceTv.setTypeface(customTypeface, Typeface.BOLD);
-                                    }
+                                    priceTv.setPadding(12, 2, 12, 12);
+                                    if (customTypeface != null) priceTv.setTypeface(customTypeface, Typeface.BOLD);
                                     inner.addView(priceTv);
 
                                     card.addView(inner);
 
-                                    // Gestion du clic
+                                    // Clic sur la carte
                                     card.setOnClickListener(new View.OnClickListener() {
                                         @Override
                                         public void onClick(View v) {
