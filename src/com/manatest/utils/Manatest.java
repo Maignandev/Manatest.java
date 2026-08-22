@@ -18,19 +18,14 @@ import com.google.appinventor.components.runtime.ComponentContainer;
 import com.google.appinventor.components.runtime.EventDispatcher;
 import com.google.appinventor.components.runtime.PermissionResultHandler;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
-
 @DesignerComponent(
-        version = 1,
-        description = "Manatest - Ouvre la galerie et affiche l'image choisie.",
+        version = 2,
+        description = "Manatest - Ouvre la galerie et renvoie l'URI directe de l'image (content://), sans copie de fichier.",
         category = ComponentCategory.EXTENSION,
         nonVisible = true
 )
 @SimpleObject(external = true)
-@UsesPermissions(permissionNames = "android.permission.READ_EXTERNAL_STORAGE, android.permission.READ_MEDIA_IMAGES")
+@UsesPermissions(permissionNames = "android.permission.READ_EXTERNAL_STORAGE,android.permission.READ_MEDIA_IMAGES")
 public class Manatest extends AndroidNonvisibleComponent implements ActivityResultListener {
 
     private final Context context;
@@ -79,54 +74,14 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         if (requestCode == PICK_IMAGE_REQUEST && resultCode == Activity.RESULT_OK && data != null) {
             Uri selectedImageUri = data.getData();
             if (selectedImageUri != null) {
-                processAndSendImage(selectedImageUri);
+                OnPhotoPicked(selectedImageUri.toString());
             } else {
                 OnError("Aucune image sélectionnée.");
             }
         }
     }
 
-    private void processAndSendImage(final Uri contentUri) {
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    InputStream inputStream = context.getContentResolver().openInputStream(contentUri);
-                    File cacheFile = new File(context.getCacheDir(), "selected_image_" + System.currentTimeMillis() + ".jpg");
-                    OutputStream outputStream = new FileOutputStream(cacheFile);
-
-                    byte[] buffer = new byte[4096];
-                    int bytesRead;
-                    while (inputStream != null && (bytesRead = inputStream.read(buffer)) != -1) {
-                        outputStream.write(buffer, 0, bytesRead);
-                    }
-
-                    if (inputStream != null) inputStream.close();
-                    outputStream.close();
-
-                    // Formatage en file:// compatible avec le composant Image de Kodular
-                    final String fileUriString = Uri.fromFile(cacheFile).toString();
-
-                    activity.runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            OnPhotoPicked(fileUriString);
-                        }
-                    });
-
-                } catch (Exception e) {
-                    activity.runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            OnError("Erreur lors de la lecture du fichier: " + e.getMessage());
-                        }
-                    });
-                }
-            }
-        }).start();
-    }
-
-    @SimpleEvent(description = "Déclenché après sélection d'une image.")
+    @SimpleEvent(description = "Déclenché après sélection d'une image. Retourne l'URI directe (content://).")
     public void OnPhotoPicked(final String imageUri) {
         EventDispatcher.dispatchEvent(Manatest.this, "OnPhotoPicked", imageUri);
     }
