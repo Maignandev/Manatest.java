@@ -5,7 +5,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
-import android.os.Environment;
 import android.provider.MediaStore;
 
 import com.google.appinventor.components.annotations.DesignerComponent;
@@ -20,14 +19,9 @@ import com.google.appinventor.components.runtime.ComponentContainer;
 import com.google.appinventor.components.runtime.EventDispatcher;
 import com.google.appinventor.components.runtime.PermissionResultHandler;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
-
 @DesignerComponent(
         version = 1,
-        description = "Manatest - Ouvre la galerie et affiche l'image choisie avec gestion de permissions.",
+        description = "Manatest - Ouvre la galerie et renvoie le ResultURI direct pour Kodular.",
         category = ComponentCategory.EXTENSION,
         nonVisible = true
 )
@@ -56,9 +50,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
             permissionNeeded = "android.permission.READ_MEDIA_IMAGES";
         }
 
-        final String targetPermission = permissionNeeded;
-
-        form.askPermission(targetPermission, new PermissionResultHandler() {
+        form.askPermission(permissionNeeded, new PermissionResultHandler() {
             @Override
             public void HandlePermissionResponse(String permission, boolean granted) {
                 launchPickerIntent();
@@ -86,60 +78,21 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         if (requestCode == PICK_IMAGE_REQUEST && resultCode == Activity.RESULT_OK && data != null) {
             Uri selectedImageUri = data.getData();
             if (selectedImageUri != null) {
-                copyAndSendImagePath(selectedImageUri);
+                // Renvoie directement le Result URI (ex: content://media/external/images/media/1000000001)
+                final String resultUri = selectedImageUri.toString();
+                activity.runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        OnPhotoPicked(resultUri);
+                    }
+                });
+            } else {
+                OnError("Aucune image n'a été sélectionnée.");
             }
         }
     }
 
-    private void copyAndSendImagePath(final Uri contentUri) {
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                InputStream inputStream = null;
-                OutputStream outputStream = null;
-                try {
-                    inputStream = context.getContentResolver().openInputStream(contentUri);
-
-                    File storageDir = context.getExternalFilesDir(Environment.DIRECTORY_PICTURES);
-                    if (storageDir == null) {
-                        storageDir = context.getFilesDir();
-                    }
-                    if (!storageDir.exists()) {
-                        storageDir.mkdirs();
-                    }
-
-                    File file = new File(storageDir, "picked_img_" + System.currentTimeMillis() + ".jpg");
-                    outputStream = new FileOutputStream(file);
-
-                    byte[] buffer = new byte[4096];
-                    int len;
-                    while (inputStream != null && (len = inputStream.read(buffer)) > 0) {
-                        outputStream.write(buffer, 0, len);
-                    }
-                    outputStream.flush();
-
-                    final String finalPath = file.getAbsolutePath();
-
-                    activity.runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            OnPhotoPicked(finalPath);
-                        }
-                    });
-
-                } catch (Exception e) {
-                    OnError("Erreur traitement image: " + e.getMessage());
-                } finally {
-                    try {
-                        if (inputStream != null) inputStream.close();
-                        if (outputStream != null) outputStream.close();
-                    } catch (Exception ignored) {}
-                }
-            }
-        }).start();
-    }
-
-    @SimpleEvent(description = "Déclenché après sélection d'une image.")
+    @SimpleEvent(description = "Déclenché après sélection d'une image. Renvoie le Result URI.")
     public void OnPhotoPicked(final String imageUri) {
         EventDispatcher.dispatchEvent(Manatest.this, "OnPhotoPicked", imageUri);
     }
@@ -149,3 +102,4 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         EventDispatcher.dispatchEvent(Manatest.this, "OnError", message);
     }
 }
+
