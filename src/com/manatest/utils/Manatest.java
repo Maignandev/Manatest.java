@@ -26,10 +26,7 @@ import com.google.appinventor.components.runtime.PermissionResultHandler;
         nonVisible = true
 )
 @SimpleObject(external = true)
-@UsesPermissions(permissionNames = {
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.READ_MEDIA_IMAGES"
-})
+@UsesPermissions(permissionNames = "android.permission.READ_EXTERNAL_STORAGE, android.permission.READ_MEDIA_IMAGES")
 public class Manatest extends AndroidNonvisibleComponent implements ActivityResultListener {
 
     private final Context context;
@@ -78,7 +75,6 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         if (requestCode == PICK_IMAGE_REQUEST && resultCode == Activity.RESULT_OK && data != null) {
             Uri selectedImageUri = data.getData();
             if (selectedImageUri != null) {
-                // Renvoie directement le Result URI (ex: content://media/external/images/media/1000000001)
                 final String resultUri = selectedImageUri.toString();
                 activity.runOnUiThread(new Runnable() {
                     @Override
