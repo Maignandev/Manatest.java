@@ -32,7 +32,10 @@ import java.io.OutputStream;
         nonVisible = true
 )
 @SimpleObject(external = true)
-@UsesPermissions(permissionNames = "android.permission.READ_EXTERNAL_STORAGE,android.permission.READ_MEDIA_IMAGES")
+@UsesPermissions(permissionNames = {
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES"
+})
 public class Manatest extends AndroidNonvisibleComponent implements ActivityResultListener {
 
     private final Context context;
