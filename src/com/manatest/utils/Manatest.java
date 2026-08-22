@@ -26,18 +26,20 @@ public class Manatest extends AndroidNonvisibleComponent {
 
     public Manatest(ComponentContainer container) {
         super(container.$form());
-        this.activity = container.$context();
+        this.activity = (Activity) container.$context();
     }
 
     @SimpleFunction(description = "Attache la zone de saisie au-dessus du clavier, dès qu'il s'ouvre.")
     public void AttachFloatingInputWithDynamicHeight(
-            final AndroidViewComponent inputContainer,
-            final AndroidViewComponent editTextComponent,
+            final Object inputContainer,
+            final Object editTextComponent,
             final int maxHeightPx) {
 
-        if (inputContainer == null || inputContainer.getView() == null) return;
+        if (!(inputContainer instanceof AndroidViewComponent)) return;
 
-        final View containerView = inputContainer.getView();
+        final View containerView = ((AndroidViewComponent) inputContainer).getView();
+        if (containerView == null) return;
+
         final View rootView = activity.getWindow().getDecorView().getRootView();
 
         rootView.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
