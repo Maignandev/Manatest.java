@@ -18,8 +18,8 @@ import com.google.appinventor.components.runtime.AndroidViewComponent;
 import com.google.appinventor.components.runtime.ComponentContainer;
 
 @DesignerComponent(
-        version = 2,
-        description = "Manatest - Clavier flottant et agrandissement automatique du conteneur avec TextBox multiligne.",
+        version = 3,
+        description = "Manatest - Clavier flottant fluide et ajustement de hauteur.",
         category = ComponentCategory.EXTENSION,
         nonVisible = true
 )
@@ -33,7 +33,7 @@ public class Manatest extends AndroidNonvisibleComponent {
         this.activity = (Activity) container.$context();
     }
 
-    @SimpleFunction(description = "Attache la zone de saisie au-dessus du clavier de manière flottante.")
+    @SimpleFunction(description = "Attache le conteneur au-dessus du clavier.")
     public void AttachFloatingInputWithDynamicHeight(
             final Object inputContainer,
             final Object editTextComponent,
@@ -44,7 +44,7 @@ public class Manatest extends AndroidNonvisibleComponent {
         final View containerView = ((AndroidViewComponent) inputContainer).getView();
         if (containerView == null) return;
 
-        final View rootView = activity.getWindow().getDecorView().getRootView();
+        final View rootView = activity.getWindow().getDecorView();
 
         rootView.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
             @Override
@@ -52,9 +52,10 @@ public class Manatest extends AndroidNonvisibleComponent {
                 Rect r = new Rect();
                 rootView.getWindowVisibleDisplayFrame(r);
 
-                int screenHeight = rootView.getRootView().getHeight();
+                int screenHeight = rootView.getHeight();
                 int keypadHeight = screenHeight - r.bottom;
 
+                // Vérification si la hauteur du clavier est significative (supérieure à 15% de l'écran)
                 if (keypadHeight > screenHeight * 0.15) {
                     containerView.setTranslationY(-keypadHeight);
                 } else {
@@ -64,7 +65,7 @@ public class Manatest extends AndroidNonvisibleComponent {
         });
     }
 
-    @SimpleFunction(description = "Force le conteneur (CardView en hauteur automatique) à s'agrandir dynamiquement selon le texte tout en respectant une limite de hauteur.")
+    @SimpleFunction(description = "Agrandit le conteneur dynamiquement avec le texte.")
     public void EnableAutoGrowWithText(
             final Object cardContainer,
             final Object editTextComponent,
@@ -87,12 +88,10 @@ public class Manatest extends AndroidNonvisibleComponent {
             @Override
             public void afterTextChanged(Editable s) {
                 containerView.requestLayout();
-                View parent = (View) containerView.getParent();
-                if (parent != null) {
-                    parent.requestLayout();
+                if (containerView.getParent() instanceof View) {
+                    ((View) containerView.getParent()).requestLayout();
                 }
 
-                // Applique la limite maximale de hauteur si spécifiée
                 if (maxHeightPx > 0) {
                     containerView.post(new Runnable() {
                         @Override
@@ -109,3 +108,4 @@ public class Manatest extends AndroidNonvisibleComponent {
         });
     }
 }
+
