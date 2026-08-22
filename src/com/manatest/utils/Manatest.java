@@ -15,16 +15,16 @@ import com.google.appinventor.components.runtime.ComponentContainer;
 
 @DesignerComponent(
         version = 1,
-        description = "FloatingInputTest - Décale la zone de saisie au-dessus du clavier virtuel.",
+        description = "Manatest - Décale la zone de saisie au-dessus du clavier virtuel.",
         category = ComponentCategory.EXTENSION,
         nonVisible = true
 )
 @SimpleObject(external = true)
-public class FloatingInputTest extends AndroidNonvisibleComponent {
+public class Manatest extends AndroidNonvisibleComponent {
 
     private final Activity activity;
 
-    public FloatingInputTest(ComponentContainer container) {
+    public Manatest(ComponentContainer container) {
         super(container.$form());
         this.activity = container.$context();
     }
