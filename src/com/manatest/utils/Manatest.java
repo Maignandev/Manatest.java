@@ -1,20 +1,25 @@
 package com.manatest.utils;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Environment;
+import android.provider.MediaStore;
 
 import com.google.appinventor.components.annotations.DesignerComponent;
 import com.google.appinventor.components.annotations.SimpleEvent;
 import com.google.appinventor.components.annotations.SimpleFunction;
 import com.google.appinventor.components.annotations.SimpleObject;
+import com.google.appinventor.components.annotations.UsesPermissions;
 import com.google.appinventor.components.common.ComponentCategory;
 import com.google.appinventor.components.runtime.ActivityResultListener;
 import com.google.appinventor.components.runtime.AndroidNonvisibleComponent;
 import com.google.appinventor.components.runtime.ComponentContainer;
 import com.google.appinventor.components.runtime.EventDispatcher;
+import com.google.appinventor.components.runtime.PermissionResultHandler;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -23,11 +28,15 @@ import java.io.OutputStream;
 
 @DesignerComponent(
         version = 1,
-        description = "Manatest - Galerie d'images compatible Android 10 à 15",
+        description = "Manatest - Ouvre la galerie et affiche l'image choisie avec gestion de permissions.",
         category = ComponentCategory.EXTENSION,
         nonVisible = true
 )
 @SimpleObject(external = true)
+@UsesPermissions(permissionNames = {
+        Manifest.permission.READ_EXTERNAL_STORAGE,
+        "android.permission.READ_MEDIA_IMAGES"
+})
 public class Manatest extends AndroidNonvisibleComponent implements ActivityResultListener {
 
     private final Context context;
@@ -41,16 +50,37 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         container.$form().registerForActivityResult(this);
     }
 
-    @SimpleFunction(description = "Ouvre le sélecteur d'images natif.")
+    @SimpleFunction(description = "Demande la permission et ouvre le sélecteur d'images natif.")
     public void OpenPhotoPicker() {
+        // Gestion dynamique des permissions selon la version d'Android
+        String permissionNeeded = Manifest.permission.READ_EXTERNAL_STORAGE;
+        if (Build.VERSION.SDK_INT >= 33) {
+            permissionNeeded = "android.permission.READ_MEDIA_IMAGES";
+        }
+
+        final String targetPermission = permissionNeeded;
+
+        form.askPermission(targetPermission, new PermissionResultHandler() {
+            @Override
+            public void HandlePermissionResponse(String permission, boolean granted) {
+                if (granted) {
+                    launchPickerIntent();
+                } else {
+                    // Tente quand même d'ouvrir le sélecteur si refusé
+                    launchPickerIntent();
+                }
+            }
+        });
+    }
+
+    private void launchPickerIntent() {
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
                 try {
-                    Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                    Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
                     intent.setType("image/*");
-                    intent.addCategory(Intent.CATEGORY_OPENABLE);
-                    activity.startActivityForResult(Intent.createChooser(intent, "Sélectionner une image"), PICK_IMAGE_REQUEST);
+                    activity.startActivityForResult(intent, PICK_IMAGE_REQUEST);
                 } catch (Exception e) {
                     OnError("OpenPhotoPicker: " + e.getMessage());
                 }
@@ -68,58 +98,61 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         }
     }
 
-    private void copyAndSendImagePath(Uri contentUri) {
-        InputStream inputStream = null;
-        OutputStream outputStream = null;
-        try {
-            inputStream = context.getContentResolver().openInputStream(contentUri);
-            
-            // Repertoire externe de l'application accessible par le composant Image de Kodular
-            File storageDir = context.getExternalFilesDir(Environment.DIRECTORY_PICTURES);
-            if (storageDir == null) {
-                storageDir = context.getFilesDir();
-            }
-            if (!storageDir.exists()) {
-                storageDir.mkdirs();
-            }
+    private void copyAndSendImagePath(final Uri contentUri) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                InputStream inputStream = null;
+                OutputStream outputStream = null;
+                try {
+                    inputStream = context.getContentResolver().openInputStream(contentUri);
+                    
+                    File storageDir = context.getExternalFilesDir(Environment.DIRECTORY_PICTURES);
+                    if (storageDir == null) {
+                        storageDir = context.getFilesDir();
+                    }
+                    if (!storageDir.exists()) {
+                        storageDir.mkdirs();
+                    }
 
-            File file = new File(storageDir, "picked_image_" + System.currentTimeMillis() + ".jpg");
-            outputStream = new FileOutputStream(file);
+                    File file = new File(storageDir, "picked_img_" + System.currentTimeMillis() + ".jpg");
+                    outputStream = new FileOutputStream(file);
 
-            byte[] buffer = new byte[4096];
-            int len;
-            while (inputStream != null && (len = inputStream.read(buffer)) > 0) {
-                outputStream.write(buffer, 0, len);
-            }
-            outputStream.flush();
+                    byte[] buffer = new byte[4096];
+                    int len;
+                    while (inputStream != null && (len = inputStream.read(buffer)) > 0) {
+                        outputStream.write(buffer, 0, len);
+                    }
+                    outputStream.flush();
 
-            // Renvoie le chemin absolu direct
-            final String finalPath = file.getAbsolutePath();
-            activity.runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    OnPhotoPicked(finalPath);
+                    final String finalPath = file.getAbsolutePath();
+
+                    activity.runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            OnPhotoPicked(finalPath);
+                        }
+                    });
+
+                } catch (Exception e) {
+                    OnError("Erreur traitement image: " + e.getMessage());
+                } finally {
+                    try {
+                        if (inputStream != null) inputStream.close();
+                        if (outputStream != null) outputStream.close();
+                    } catch (Exception ignored) {}
                 }
-            });
-
-        } catch (Exception e) {
-            OnError("Copie fichier échouée: " + e.getMessage());
-        } finally {
-            try {
-                if (inputStream != null) inputStream.close();
-                if (outputStream != null) outputStream.close();
-            } catch (Exception ignored) {}
-        }
+            }
+        }).start();
     }
 
-    @SimpleEvent(description = "Déclenché après sélection d'une image depuis la galerie.")
-    public void OnPhotoPicked(String imageUri) {
-        EventDispatcher.dispatchEvent(this, "OnPhotoPicked", imageUri);
+    @SimpleEvent(description = "Déclenché après sélection d'une image.")
+    public void OnPhotoPicked(final String imageUri) {
+        EventDispatcher.dispatchEvent(Manatest.this, "OnPhotoPicked", imageUri);
     }
 
     @SimpleEvent(description = "Déclenché en cas de problème.")
-    public void OnError(String message) {
-        EventDispatcher.dispatchEvent(this, "OnError", message);
+    public void OnError(final String message) {
+        EventDispatcher.dispatchEvent(Manatest.this, "OnError", message);
     }
 }
-
