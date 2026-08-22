@@ -19,8 +19,8 @@ import com.google.appinventor.components.runtime.EventDispatcher;
 import com.google.appinventor.components.runtime.PermissionResultHandler;
 
 @DesignerComponent(
-        version = 2,
-        description = "Manatest - Ouvre la galerie et renvoie l'URI directe de l'image (content://), sans copie de fichier.",
+        version = 3,
+        description = "Manatest - Ouvre la galerie et renvoie l'URI directe de l'image, avec le bon code de requête.",
         category = ComponentCategory.EXTENSION,
         nonVisible = true
 )
@@ -30,13 +30,13 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
 
     private final Context context;
     private final Activity activity;
-    private final int PICK_IMAGE_REQUEST = 2001;
+    private final int requestCode;
 
     public Manatest(ComponentContainer container) {
         super(container.$form());
         this.context = container.$context();
         this.activity = (Activity) container.$context();
-        container.$form().registerForActivityResult(this);
+        this.requestCode = container.$form().registerForActivityResult(this);
     }
 
     @SimpleFunction(description = "Demande la permission et ouvre le sélecteur d'images.")
@@ -49,7 +49,11 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         form.askPermission(permissionNeeded, new PermissionResultHandler() {
             @Override
             public void HandlePermissionResponse(String permission, boolean granted) {
-                launchPickerIntent();
+                if (granted) {
+                    launchPickerIntent();
+                } else {
+                    OnError("Permission refusée par l'utilisateur.");
+                }
             }
         });
     }
@@ -61,7 +65,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
                 try {
                     Intent intent = new Intent(Intent.ACTION_PICK);
                     intent.setType("image/*");
-                    activity.startActivityForResult(intent, PICK_IMAGE_REQUEST);
+                    form.startActivityForResult(intent, requestCode);
                 } catch (Exception e) {
                     OnError("OpenPhotoPicker: " + e.getMessage());
                 }
@@ -70,13 +74,17 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
     }
 
     @Override
-    public void resultReturned(int requestCode, int resultCode, Intent data) {
-        if (requestCode == PICK_IMAGE_REQUEST && resultCode == Activity.RESULT_OK && data != null) {
-            Uri selectedImageUri = data.getData();
-            if (selectedImageUri != null) {
-                OnPhotoPicked(selectedImageUri.toString());
+    public void resultReturned(int receivedRequestCode, int resultCode, Intent data) {
+        if (receivedRequestCode == requestCode) {
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                Uri selectedImageUri = data.getData();
+                if (selectedImageUri != null) {
+                    OnPhotoPicked(selectedImageUri.toString());
+                } else {
+                    OnError("Aucune image sélectionnée (URI nulle).");
+                }
             } else {
-                OnError("Aucune image sélectionnée.");
+                OnError("Sélection annulée ou échouée (resultCode: " + resultCode + ")");
             }
         }
     }
