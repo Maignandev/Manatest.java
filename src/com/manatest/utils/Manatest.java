@@ -65,8 +65,9 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
                 String realPath = getRealPathFromURI(selectedImageUri);
 
                 if (realPath != null && !realPath.isEmpty()) {
-                    if (!realPath.startsWith("file://")) {
-                        realPath = "file://" + realPath;
+                    // Supprime file:// si présent pour la compatibilité Kodular
+                    if (realPath.startsWith("file://")) {
+                        realPath = realPath.replace("file://", "");
                     }
                     OnPhotoPicked(realPath);
                 } else {
@@ -89,9 +90,11 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
                 cursor.close();
             }
         } catch (Exception e) {
-            OnError("getRealPathFromURI (cursor): " + e.getMessage());
+            // Ignoré pour passer automatiquement au fallback
         }
 
+        // Si le chemin direct est inaccessible ou vide (Scoped Storage / Android 10+),
+        // on copie le flux dans un fichier temporaire accessible
         if (filePath == null || filePath.isEmpty()) {
             InputStream inputStream = null;
             OutputStream outputStream = null;
@@ -106,7 +109,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
                 }
                 filePath = file.getAbsolutePath();
             } catch (Exception e) {
-                OnError("getRealPathFromURI (copie): " + e.getMessage());
+                OnError("Erreur de lecture image: " + e.getMessage());
             } finally {
                 try {
                     if (inputStream != null) inputStream.close();
@@ -127,3 +130,4 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         EventDispatcher.dispatchEvent(this, "OnError", message);
     }
 }
+
