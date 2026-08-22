@@ -1,101 +1,59 @@
 package com.manatest.utils;
 
 import android.app.Activity;
-import android.content.Context;
-import android.content.Intent;
-import android.net.Uri;
-import android.os.Build;
+import android.graphics.Rect;
+import android.view.View;
+import android.view.ViewTreeObserver;
 
 import com.google.appinventor.components.annotations.DesignerComponent;
-import com.google.appinventor.components.annotations.SimpleEvent;
 import com.google.appinventor.components.annotations.SimpleFunction;
 import com.google.appinventor.components.annotations.SimpleObject;
-import com.google.appinventor.components.annotations.UsesPermissions;
 import com.google.appinventor.components.common.ComponentCategory;
-import com.google.appinventor.components.runtime.ActivityResultListener;
 import com.google.appinventor.components.runtime.AndroidNonvisibleComponent;
+import com.google.appinventor.components.runtime.AndroidViewComponent;
 import com.google.appinventor.components.runtime.ComponentContainer;
-import com.google.appinventor.components.runtime.EventDispatcher;
-import com.google.appinventor.components.runtime.PermissionResultHandler;
 
 @DesignerComponent(
-        version = 3,
-        description = "Manatest - Ouvre la galerie et renvoie l'URI directe de l'image, avec le bon code de requête.",
+        version = 1,
+        description = "FloatingInputTest - Décale la zone de saisie au-dessus du clavier virtuel.",
         category = ComponentCategory.EXTENSION,
         nonVisible = true
 )
 @SimpleObject(external = true)
-@UsesPermissions(permissionNames = "android.permission.READ_EXTERNAL_STORAGE,android.permission.READ_MEDIA_IMAGES")
-public class Manatest extends AndroidNonvisibleComponent implements ActivityResultListener {
+public class FloatingInputTest extends AndroidNonvisibleComponent {
 
-    private final Context context;
     private final Activity activity;
-    private final int requestCode;
 
-    public Manatest(ComponentContainer container) {
+    public FloatingInputTest(ComponentContainer container) {
         super(container.$form());
-        this.context = container.$context();
-        this.activity = (Activity) container.$context();
-        this.requestCode = container.$form().registerForActivityResult(this);
+        this.activity = container.$context();
     }
 
-    @SimpleFunction(description = "Demande la permission et ouvre le sélecteur d'images.")
-    public void OpenPhotoPicker() {
-        String permissionNeeded = "android.permission.READ_EXTERNAL_STORAGE";
-        if (Build.VERSION.SDK_INT >= 33) {
-            permissionNeeded = "android.permission.READ_MEDIA_IMAGES";
-        }
+    @SimpleFunction(description = "Attache la zone de saisie au-dessus du clavier, dès qu'il s'ouvre.")
+    public void AttachFloatingInputWithDynamicHeight(
+            final AndroidViewComponent inputContainer,
+            final AndroidViewComponent editTextComponent,
+            final int maxHeightPx) {
 
-        form.askPermission(permissionNeeded, new PermissionResultHandler() {
+        if (inputContainer == null || inputContainer.getView() == null) return;
+
+        final View containerView = inputContainer.getView();
+        final View rootView = activity.getWindow().getDecorView().getRootView();
+
+        rootView.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
             @Override
-            public void HandlePermissionResponse(String permission, boolean granted) {
-                if (granted) {
-                    launchPickerIntent();
+            public void onGlobalLayout() {
+                Rect r = new Rect();
+                rootView.getWindowVisibleDisplayFrame(r);
+                int screenHeight = rootView.getRootView().getHeight();
+                int keypadHeight = screenHeight - r.bottom;
+
+                if (keypadHeight > screenHeight * 0.15) {
+                    containerView.setTranslationY(-keypadHeight);
                 } else {
-                    OnError("Permission refusée par l'utilisateur.");
+                    containerView.setTranslationY(0);
                 }
             }
         });
-    }
-
-    private void launchPickerIntent() {
-        activity.runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    Intent intent = new Intent(Intent.ACTION_PICK);
-                    intent.setType("image/*");
-                    form.startActivityForResult(intent, requestCode);
-                } catch (Exception e) {
-                    OnError("OpenPhotoPicker: " + e.getMessage());
-                }
-            }
-        });
-    }
-
-    @Override
-    public void resultReturned(int receivedRequestCode, int resultCode, Intent data) {
-        if (receivedRequestCode == requestCode) {
-            if (resultCode == Activity.RESULT_OK && data != null) {
-                Uri selectedImageUri = data.getData();
-                if (selectedImageUri != null) {
-                    OnPhotoPicked(selectedImageUri.toString());
-                } else {
-                    OnError("Aucune image sélectionnée (URI nulle).");
-                }
-            } else {
-                OnError("Sélection annulée ou échouée (resultCode: " + resultCode + ")");
-            }
-        }
-    }
-
-    @SimpleEvent(description = "Déclenché après sélection d'une image. Retourne l'URI directe (content://).")
-    public void OnPhotoPicked(final String imageUri) {
-        EventDispatcher.dispatchEvent(Manatest.this, "OnPhotoPicked", imageUri);
-    }
-
-    @SimpleEvent(description = "Déclenché en cas d'erreur.")
-    public void OnError(final String message) {
-        EventDispatcher.dispatchEvent(Manatest.this, "OnError", message);
     }
 }
