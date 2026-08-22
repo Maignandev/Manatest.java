@@ -1,203 +1,86 @@
-package com.manatest.utils;
-
 import android.app.Activity;
-import android.content.Context;
-import android.content.res.ColorStateList;
-import android.graphics.Color;
-import android.graphics.Typeface;
-import android.util.TypedValue;
-import android.view.View;
-import android.view.ViewGroup;
-import android.widget.LinearLayout;
-import android.widget.RadioButton;
-import android.widget.RadioGroup;
-import android.widget.TextView;
+import android.content.Intent;
+import android.net.Uri;
+import android.provider.MediaStore;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 
-import com.google.appinventor.components.annotations.DesignerComponent;
-import com.google.appinventor.components.annotations.SimpleEvent;
-import com.google.appinventor.components.annotations.SimpleFunction;
-import com.google.appinventor.components.annotations.SimpleObject;
-import com.google.appinventor.components.common.ComponentCategory;
-import com.google.appinventor.components.runtime.AndroidNonvisibleComponent;
-import com.google.appinventor.components.runtime.AndroidViewComponent;
-import com.google.appinventor.components.runtime.ComponentContainer;
-import com.google.appinventor.components.runtime.EventDispatcher;
-import com.google.appinventor.components.runtime.util.AsynchUtil;
+// =========================================================================
+// 6. GALERIE D'IMAGES & COMPRESSION
+// =========================================================================
 
-import org.json.JSONArray;
-import org.json.JSONObject;
-
-@DesignerComponent(
-        version = 1,
-        description = "Extension de test pour la liste dynamique de catégories.",
-        category = ComponentCategory.EXTENSION,
-        nonVisible = true
-)
-@SimpleObject(external = true)
-public class Manatest extends AndroidNonvisibleComponent {
-
-    private final Context context;
-    private final Activity activity;
-    private Typeface customTypeface = null;
-    private int radioButtonColor = Color.parseColor("#C01A1A1B");
-
-    public Manatest(ComponentContainer container) {
-        super(container.$form());
-        this.context = container.$context();
-        this.activity = (Activity) container.$context();
-    }
-
-    private ViewGroup getRealLayout(AndroidViewComponent component) {
-        View view = component.getView();
-        if (view instanceof ViewGroup) {
-            ViewGroup vg = (ViewGroup) view;
-            if (vg.getChildCount() > 0 && vg.getChildAt(0) instanceof ViewGroup) {
-                return (ViewGroup) vg.getChildAt(0);
+@SimpleFunction(description = "Ouvre la galerie d'images native.")
+public void OpenPhotoPicker() {
+    activity.runOnUiThread(new Runnable() {
+        @Override
+        public void run() {
+            try {
+                Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+                intent.setType("image/*");
+                activity.startActivityForResult(intent, PICK_IMAGE_REQUEST);
+            } catch (Exception e) {
+                e.printStackTrace();
             }
-            return vg;
         }
-        return null;
-    }
+    });
+}
 
-    private int dpToPx(int dp) {
-        return (int) TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP,
-                dp,
-                context.getResources().getDisplayMetrics()
-        );
-    }
-
-    @SimpleFunction(description = "Charge une police personnalisée à partir du nom du fichier dans les Assets.")
-    public void LoadCustomFont(String fontName) {
-        try {
-            customTypeface = Typeface.createFromAsset(context.getAssets(), fontName);
-        } catch (Exception e) {
-            e.printStackTrace();
-            customTypeface = null;
-        }
-    }
-
-    @SimpleFunction(description = "Définit la couleur des boutons radio (sélectionné et non sélectionné).")
-    public void SetRadioButtonColor(int color) {
-        this.radioButtonColor = color;
-    }
-
-    @SimpleEvent(description = "Déclenché lors du choix d'une catégorie.")
-    public void OnCategorySelected(String categoryId, String categoryTitle) {
-        EventDispatcher.dispatchEvent(this, "OnCategorySelected", categoryId, categoryTitle);
-    }
-
-    @SimpleFunction(description = "Génère la liste dynamique des catégories et sous-catégories à partir d'un JSON.")
-    public void BuildCategoryListFromJson(
-            final AndroidViewComponent listContainer,
-            final String categoriesJson) {
-
-        AsynchUtil.runAsynchronously(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    final JSONArray mainArray = new JSONArray(categoriesJson);
-
-                    activity.runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            try {
-                                ViewGroup targetLayout = getRealLayout(listContainer);
-                                if (targetLayout == null) return;
-
-                                targetLayout.removeAllViews();
-
-                                final RadioGroup groupeUnique = new RadioGroup(activity);
-                                groupeUnique.setOrientation(LinearLayout.VERTICAL);
-                                groupeUnique.setLayoutParams(new LinearLayout.LayoutParams(
-                                        ViewGroup.LayoutParams.MATCH_PARENT,
-                                        ViewGroup.LayoutParams.WRAP_CONTENT
-                                ));
-
-                                int colorTitle = Color.parseColor("#E91A1A1B");
-                                int colorItem = Color.parseColor("#C01A1A1B");
-                                int colorDivider = Color.parseColor("#F0F0F0");
-
-                                ColorStateList radioColorList = ColorStateList.valueOf(radioButtonColor);
-
-                                for (int i = 0; i < mainArray.length(); i++) {
-                                    JSONObject categoryObj = mainArray.getJSONObject(i);
-                                    String categoryName = categoryObj.optString("title", "");
-                                    JSONArray subCategories = categoryObj.optJSONArray("subcategories");
-
-                                    TextView header = new TextView(activity);
-                                    header.setText(">  " + categoryName);
-                                    header.setTextColor(colorTitle);
-                                    header.setTextSize(18);
-                                    header.setTypeface(null, Typeface.BOLD);
-                                    if (customTypeface != null) {
-                                        header.setTypeface(customTypeface, Typeface.BOLD);
-                                    }
-                                    header.setPadding(0, dpToPx(16), 0, dpToPx(8));
-                                    
-                                    groupeUnique.addView(header);
-
-                                    if (subCategories != null) {
-                                        for (int j = 0; j < subCategories.length(); j++) {
-                                            JSONObject subObj = subCategories.getJSONObject(j);
-                                            final String subId = subObj.optString("id", "");
-                                            final String subTitle = subObj.optString("title", "");
-
-                                            RadioButton bouton = new RadioButton(activity);
-                                            bouton.setId(View.generateViewId());
-                                            bouton.setText(subTitle);
-                                            bouton.setTextColor(colorItem);
-                                            bouton.setTextSize(13);
-                                            bouton.setButtonTintList(radioColorList);
-
-                                            if (customTypeface != null) {
-                                                bouton.setTypeface(customTypeface);
-                                            }
-                                            
-                                            LinearLayout.LayoutParams pBouton = new LinearLayout.LayoutParams(
-                                                    ViewGroup.LayoutParams.MATCH_PARENT,
-                                                    ViewGroup.LayoutParams.WRAP_CONTENT
-                                            );
-                                            bouton.setLayoutParams(pBouton);
-
-                                            int padVertical = dpToPx(12);
-                                            int padHorizontal = dpToPx(8);
-                                            bouton.setPadding(padHorizontal, padVertical, padHorizontal, padVertical);
-                                            bouton.setTag(subId);
-
-                                            bouton.setOnClickListener(new View.OnClickListener() {
-                                                @Override
-                                                public void onClick(View v) {
-                                                    OnCategorySelected(subId, subTitle);
-                                                }
-                                            });
-
-                                            groupeUnique.addView(bouton);
-
-                                            View divider = new View(activity);
-                                            LinearLayout.LayoutParams pDivider = new LinearLayout.LayoutParams(
-                                                    ViewGroup.LayoutParams.MATCH_PARENT,
-                                                    dpToPx(1)
-                                            );
-                                            divider.setLayoutParams(pDivider);
-                                            divider.setBackgroundColor(colorDivider);
-
-                                            groupeUnique.addView(divider);
-                                        }
-                                    }
-                                }
-
-                                targetLayout.addView(groupeUnique);
-
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                            }
-                        }
-                    });
-                } catch (Exception e) {
-                    e.printStackTrace();
+@Override
+public void resultReturned(int requestCode, int resultCode, Intent data) {
+    if (requestCode == PICK_IMAGE_REQUEST && resultCode == Activity.RESULT_OK && data != null) {
+        Uri selectedImageUri = data.getData();
+        if (selectedImageUri != null) {
+            String realPath = getRealPathFromURI(selectedImageUri);
+            
+            // Formatage avec préfixe file:// pour affichage instantané dans Kodular
+            if (realPath != null && !realPath.isEmpty()) {
+                if (!realPath.startsWith("file://")) {
+                    realPath = "file://" + realPath;
                 }
+                OnPhotoPicked(realPath);
+            } else {
+                OnPhotoPicked(selectedImageUri.toString());
             }
-        });
+        }
     }
 }
+
+private String getRealPathFromURI(Uri contentUri) {
+    String filePath = "";
+    try {
+        String[] proj = { MediaStore.Images.Media.DATA };
+        android.database.Cursor cursor = context.getContentResolver().query(contentUri, proj, null, null, null);
+        if (cursor != null) {
+            int columnIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
+            if (cursor.moveToFirst()) {
+                filePath = cursor.getString(columnIndex);
+            }
+            cursor.close();
+        }
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+
+    // Solution de secours pour Android 10+ (Scoped Storage)
+    if (filePath == null || filePath.isEmpty()) {
+        try {
+            InputStream inputStream = context.getContentResolver().openInputStream(contentUri);
+            File file = new File(context.getCacheDir(), "picked_img_" + System.currentTimeMillis() + ".jpg");
+            OutputStream outputStream = new FileOutputStream(file);
+            byte[] buffer = new byte[2048];
+            int len;
+            while ((len = inputStream.read(buffer)) > 0) {
+                outputStream.write(buffer, 0, len);
+            }
+            outputStream.close();
+            inputStream.close();
+            filePath = file.getAbsolutePath();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+    return filePath;
+}
+
