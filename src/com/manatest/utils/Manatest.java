@@ -18,8 +18,8 @@ import com.google.appinventor.components.runtime.AndroidViewComponent;
 import com.google.appinventor.components.runtime.ComponentContainer;
 
 @DesignerComponent(
-        version = 3,
-        description = "Manatest - Clavier flottant fluide et ajustement de hauteur.",
+        version = 4,
+        description = "Manatest - Gestion avancée du clavier flottant et auto-growth.",
         category = ComponentCategory.EXTENSION,
         nonVisible = true
 )
@@ -33,7 +33,7 @@ public class Manatest extends AndroidNonvisibleComponent {
         this.activity = (Activity) container.$context();
     }
 
-    @SimpleFunction(description = "Attache le conteneur au-dessus du clavier.")
+    @SimpleFunction(description = "Fait flotter le conteneur au-dessus du clavier virtuel.")
     public void AttachFloatingInputWithDynamicHeight(
             final Object inputContainer,
             final Object editTextComponent,
@@ -44,18 +44,19 @@ public class Manatest extends AndroidNonvisibleComponent {
         final View containerView = ((AndroidViewComponent) inputContainer).getView();
         if (containerView == null) return;
 
-        final View rootView = activity.getWindow().getDecorView();
+        final View contentView = activity.findViewById(android.R.id.content);
+        if (contentView == null) return;
 
-        rootView.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+        contentView.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
             @Override
             public void onGlobalLayout() {
                 Rect r = new Rect();
-                rootView.getWindowVisibleDisplayFrame(r);
+                contentView.getWindowVisibleDisplayFrame(r);
 
-                int screenHeight = rootView.getHeight();
+                int screenHeight = contentView.getRootView().getHeight();
                 int keypadHeight = screenHeight - r.bottom;
 
-                // Vérification si la hauteur du clavier est significative (supérieure à 15% de l'écran)
+                // Si le clavier dépasse 15% de l'écran, décaler le conteneur
                 if (keypadHeight > screenHeight * 0.15) {
                     containerView.setTranslationY(-keypadHeight);
                 } else {
@@ -65,7 +66,7 @@ public class Manatest extends AndroidNonvisibleComponent {
         });
     }
 
-    @SimpleFunction(description = "Agrandit le conteneur dynamiquement avec le texte.")
+    @SimpleFunction(description = "Permet l'agrandissement automatique du conteneur lors de la saisie.")
     public void EnableAutoGrowWithText(
             final Object cardContainer,
             final Object editTextComponent,
@@ -78,7 +79,9 @@ public class Manatest extends AndroidNonvisibleComponent {
 
         if (!(editView instanceof EditText) || containerView == null) return;
 
-        ((EditText) editView).addTextChangedListener(new TextWatcher() {
+        final EditText editText = (EditText) editView;
+
+        editText.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
 
@@ -87,23 +90,23 @@ public class Manatest extends AndroidNonvisibleComponent {
 
             @Override
             public void afterTextChanged(Editable s) {
-                containerView.requestLayout();
-                if (containerView.getParent() instanceof View) {
-                    ((View) containerView.getParent()).requestLayout();
-                }
+                containerView.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        ViewGroup.LayoutParams params = containerView.getLayoutParams();
+                        if (params != null) {
+                            // Autorise le redimensionnement automatique selon le texte
+                            params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
 
-                if (maxHeightPx > 0) {
-                    containerView.post(new Runnable() {
-                        @Override
-                        public void run() {
-                            if (containerView.getHeight() > maxHeightPx) {
-                                ViewGroup.LayoutParams params = containerView.getLayoutParams();
+                            // Si une hauteur maximale est définie et dépassée
+                            if (maxHeightPx > 0 && containerView.getHeight() > maxHeightPx) {
                                 params.height = maxHeightPx;
-                                containerView.setLayoutParams(params);
                             }
+                            containerView.setLayoutParams(params);
+                            containerView.requestLayout();
                         }
-                    });
-                }
+                    }
+                });
             }
         });
     }
