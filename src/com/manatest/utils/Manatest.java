@@ -4,7 +4,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
-import android.provider.MediaStore;
+import android.os.Environment;
 
 import com.google.appinventor.components.annotations.DesignerComponent;
 import com.google.appinventor.components.annotations.SimpleEvent;
@@ -23,7 +23,7 @@ import java.io.OutputStream;
 
 @DesignerComponent(
         version = 1,
-        description = "Manatest - Ouvre la galerie et récupère l'image choisie.",
+        description = "Manatest - Galerie d'images compatible Android 10 à 15",
         category = ComponentCategory.EXTENSION,
         nonVisible = true
 )
@@ -41,15 +41,16 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         container.$form().registerForActivityResult(this);
     }
 
-    @SimpleFunction(description = "Ouvre la galerie d'images native.")
+    @SimpleFunction(description = "Ouvre le sélecteur d'images natif.")
     public void OpenPhotoPicker() {
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
                 try {
-                    Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+                    Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
                     intent.setType("image/*");
-                    activity.startActivityForResult(intent, PICK_IMAGE_REQUEST);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    activity.startActivityForResult(Intent.createChooser(intent, "Sélectionner une image"), PICK_IMAGE_REQUEST);
                 } catch (Exception e) {
                     OnError("OpenPhotoPicker: " + e.getMessage());
                 }
@@ -62,62 +63,53 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         if (requestCode == PICK_IMAGE_REQUEST && resultCode == Activity.RESULT_OK && data != null) {
             Uri selectedImageUri = data.getData();
             if (selectedImageUri != null) {
-                String realPath = getRealPathFromURI(selectedImageUri);
-
-                if (realPath != null && !realPath.isEmpty()) {
-                    // Supprime file:// si présent pour la compatibilité Kodular
-                    if (realPath.startsWith("file://")) {
-                        realPath = realPath.replace("file://", "");
-                    }
-                    OnPhotoPicked(realPath);
-                } else {
-                    OnPhotoPicked(selectedImageUri.toString());
-                }
+                copyAndSendImagePath(selectedImageUri);
             }
         }
     }
 
-    private String getRealPathFromURI(Uri contentUri) {
-        String filePath = "";
+    private void copyAndSendImagePath(Uri contentUri) {
+        InputStream inputStream = null;
+        OutputStream outputStream = null;
         try {
-            String[] proj = { MediaStore.Images.Media.DATA };
-            android.database.Cursor cursor = context.getContentResolver().query(contentUri, proj, null, null, null);
-            if (cursor != null) {
-                int columnIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
-                if (cursor.moveToFirst()) {
-                    filePath = cursor.getString(columnIndex);
-                }
-                cursor.close();
+            inputStream = context.getContentResolver().openInputStream(contentUri);
+            
+            // Repertoire externe de l'application accessible par le composant Image de Kodular
+            File storageDir = context.getExternalFilesDir(Environment.DIRECTORY_PICTURES);
+            if (storageDir == null) {
+                storageDir = context.getFilesDir();
             }
-        } catch (Exception e) {
-            // Ignoré pour passer automatiquement au fallback
-        }
+            if (!storageDir.exists()) {
+                storageDir.mkdirs();
+            }
 
-        // Si le chemin direct est inaccessible ou vide (Scoped Storage / Android 10+),
-        // on copie le flux dans un fichier temporaire accessible
-        if (filePath == null || filePath.isEmpty()) {
-            InputStream inputStream = null;
-            OutputStream outputStream = null;
-            try {
-                inputStream = context.getContentResolver().openInputStream(contentUri);
-                File file = new File(context.getCacheDir(), "picked_img_" + System.currentTimeMillis() + ".jpg");
-                outputStream = new FileOutputStream(file);
-                byte[] buffer = new byte[2048];
-                int len;
-                while (inputStream != null && (len = inputStream.read(buffer)) > 0) {
-                    outputStream.write(buffer, 0, len);
-                }
-                filePath = file.getAbsolutePath();
-            } catch (Exception e) {
-                OnError("Erreur de lecture image: " + e.getMessage());
-            } finally {
-                try {
-                    if (inputStream != null) inputStream.close();
-                    if (outputStream != null) outputStream.close();
-                } catch (Exception ignored) {}
+            File file = new File(storageDir, "picked_image_" + System.currentTimeMillis() + ".jpg");
+            outputStream = new FileOutputStream(file);
+
+            byte[] buffer = new byte[4096];
+            int len;
+            while (inputStream != null && (len = inputStream.read(buffer)) > 0) {
+                outputStream.write(buffer, 0, len);
             }
+            outputStream.flush();
+
+            // Renvoie le chemin absolu direct
+            final String finalPath = file.getAbsolutePath();
+            activity.runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    OnPhotoPicked(finalPath);
+                }
+            });
+
+        } catch (Exception e) {
+            OnError("Copie fichier échouée: " + e.getMessage());
+        } finally {
+            try {
+                if (inputStream != null) inputStream.close();
+                if (outputStream != null) outputStream.close();
+            } catch (Exception ignored) {}
         }
-        return filePath;
     }
 
     @SimpleEvent(description = "Déclenché après sélection d'une image depuis la galerie.")
