@@ -21,7 +21,7 @@ import com.google.appinventor.components.runtime.PermissionResultHandler;
 
 @DesignerComponent(
         version = 1,
-        description = "Manatest - Galerie photo compatible Samsung One UI.",
+        description = "Manatest - Ouvre la galerie et affiche l'image choisie.",
         category = ComponentCategory.EXTENSION,
         nonVisible = true
 )
@@ -38,7 +38,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         container.$form().registerForActivityResult(this);
     }
 
-    @SimpleFunction(description = "Demande la permission puis ouvre la galerie.")
+    @SimpleFunction(description = "Demande la permission nécessaire et ouvre le sélecteur d'images.")
     public void OpenPhotoPicker() {
         String permissionNeeded = "android.permission.READ_EXTERNAL_STORAGE";
         if (Build.VERSION.SDK_INT >= 33) {
@@ -58,18 +58,11 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
             @Override
             public void run() {
                 try {
-                    Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                    Intent intent = new Intent(Intent.ACTION_PICK);
                     intent.setType("image/*");
-                    intent.addCategory(Intent.CATEGORY_OPENABLE);
-                    
-                    // Si l'intent standard échoue, on tente l'intent de la galerie
-                    if (intent.resolveActivity(activity.getPackageManager()) == null) {
-                        intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
-                    }
-                    
-                    activity.startActivityForResult(Intent.createChooser(intent, "Sélectionner une image"), PICK_IMAGE_REQUEST);
+                    activity.startActivityForResult(intent, PICK_IMAGE_REQUEST);
                 } catch (Exception e) {
-                    OnError("Erreur ouverture galerie: " + e.getMessage());
+                    OnError("OpenPhotoPicker: " + e.getMessage());
                 }
             }
         });
@@ -103,3 +96,4 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         EventDispatcher.dispatchEvent(Manatest.this, "OnError", message);
     }
 }
+
