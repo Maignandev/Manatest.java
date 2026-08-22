@@ -23,18 +23,18 @@ import java.io.OutputStream;
 
 @DesignerComponent(
         version = 1,
-        description = "PhotoPickerTest - Ouvre la galerie et récupère l'image choisie.",
+        description = "Manatest - Ouvre la galerie et récupère l'image choisie.",
         category = ComponentCategory.EXTENSION,
         nonVisible = true
 )
 @SimpleObject(external = true)
-public class PhotoPickerTest extends AndroidNonvisibleComponent implements ActivityResultListener {
+public class Manatest extends AndroidNonvisibleComponent implements ActivityResultListener {
 
     private final Context context;
     private final Activity activity;
     private final int PICK_IMAGE_REQUEST = 2001;
 
-    public PhotoPickerTest(ComponentContainer container) {
+    public Manatest(ComponentContainer container) {
         super(container.$form());
         this.context = container.$context();
         this.activity = (Activity) container.$context();
