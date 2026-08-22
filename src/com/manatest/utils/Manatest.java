@@ -1,6 +1,5 @@
 package com.manatest.utils;
 
-import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
@@ -34,7 +33,7 @@ import java.io.OutputStream;
 )
 @SimpleObject(external = true)
 @UsesPermissions(permissionNames = {
-        Manifest.permission.READ_EXTERNAL_STORAGE,
+        "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.READ_MEDIA_IMAGES"
 })
 public class Manatest extends AndroidNonvisibleComponent implements ActivityResultListener {
@@ -52,8 +51,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
 
     @SimpleFunction(description = "Demande la permission et ouvre le sélecteur d'images natif.")
     public void OpenPhotoPicker() {
-        // Gestion dynamique des permissions selon la version d'Android
-        String permissionNeeded = Manifest.permission.READ_EXTERNAL_STORAGE;
+        String permissionNeeded = "android.permission.READ_EXTERNAL_STORAGE";
         if (Build.VERSION.SDK_INT >= 33) {
             permissionNeeded = "android.permission.READ_MEDIA_IMAGES";
         }
@@ -63,12 +61,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         form.askPermission(targetPermission, new PermissionResultHandler() {
             @Override
             public void HandlePermissionResponse(String permission, boolean granted) {
-                if (granted) {
-                    launchPickerIntent();
-                } else {
-                    // Tente quand même d'ouvrir le sélecteur si refusé
-                    launchPickerIntent();
-                }
+                launchPickerIntent();
             }
         });
     }
