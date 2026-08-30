@@ -1,13 +1,14 @@
 package com.manatest.utils;
 
 import android.app.Activity;
-import android.graphics.Rect;
-import android.text.Editable;
-import android.text.TextWatcher;
+import android.graphics.Picture;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.PictureDrawable;
 import android.view.View;
-import android.view.ViewGroup;
-import android.view.ViewTreeObserver;
-import android.widget.EditText;
+import android.widget.ImageView;
+
+import com.caverock.androidsvg.SVG;
 
 import com.google.appinventor.components.annotations.DesignerComponent;
 import com.google.appinventor.components.annotations.SimpleFunction;
@@ -17,9 +18,11 @@ import com.google.appinventor.components.runtime.AndroidNonvisibleComponent;
 import com.google.appinventor.components.runtime.AndroidViewComponent;
 import com.google.appinventor.components.runtime.ComponentContainer;
 
+import java.io.InputStream;
+
 @DesignerComponent(
-        version = 4,
-        description = "Manatest - Gestion avancée du clavier flottant et auto-growth.",
+        version = 6,
+        description = "Manatest - Test de rendu SVG vectoriel + rendu haute qualité des icônes bitmap.",
         category = ComponentCategory.EXTENSION,
         nonVisible = true
 )
@@ -33,80 +36,151 @@ public class Manatest extends AndroidNonvisibleComponent {
         this.activity = (Activity) container.$context();
     }
 
-    @SimpleFunction(description = "Fait flotter le conteneur au-dessus du clavier virtuel.")
-    public void AttachFloatingInputWithDynamicHeight(
-            final Object inputContainer,
-            final Object editTextComponent,
-            final int maxHeightPx) {
+    // =========================================================================
+    // TEST — RENDU SVG VECTORIEL
+    // =========================================================================
+    //
+    // Charge un fichier .svg présent dans les Media/assets du projet
+    // et l'affiche dans un composant Image avec un rendu vectoriel
+    // (net à n'importe quelle taille, contrairement à un bitmap).
+    //
+    // =========================================================================
 
-        if (!(inputContainer instanceof AndroidViewComponent)) return;
+    @SimpleFunction(description = "TEST — Charge un fichier SVG (depuis les Media du projet) et l'affiche dans un composant Image avec un rendu vectoriel net à toute taille.")
+    public void SetIconFromSvg(
+            final AndroidViewComponent imageComponent,
+            final String svgAssetName) {
 
-        final View containerView = ((AndroidViewComponent) inputContainer).getView();
-        if (containerView == null) return;
+        if (imageComponent == null) {
+            OnSvgError("SetIconFromSvg: composant invalide.");
+            return;
+        }
 
-        final View contentView = activity.findViewById(android.R.id.content);
-        if (contentView == null) return;
+        final View view = imageComponent.getView();
 
-        contentView.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+        if (!(view instanceof ImageView)) {
+            OnSvgError("SetIconFromSvg: le composant n'est pas une Image.");
+            return;
+        }
+
+        activity.runOnUiThread(new Runnable() {
             @Override
-            public void onGlobalLayout() {
-                Rect r = new Rect();
-                contentView.getWindowVisibleDisplayFrame(r);
+            public void run() {
 
-                int screenHeight = contentView.getRootView().getHeight();
-                int keypadHeight = screenHeight - r.bottom;
+                InputStream input = null;
 
-                // Si le clavier dépasse 15% de l'écran, décaler le conteneur
-                if (keypadHeight > screenHeight * 0.15) {
-                    containerView.setTranslationY(-keypadHeight);
-                } else {
-                    containerView.setTranslationY(0);
+                try {
+
+                    input = activity.getAssets().open(svgAssetName);
+
+                    SVG svg = SVG.getFromInputStream(input);
+
+                    Picture picture = svg.renderToPicture();
+
+                    PictureDrawable drawable = new PictureDrawable(picture);
+
+                    ImageView imageView = (ImageView) view;
+
+                    // Obligatoire : un PictureDrawable ne s'affiche pas
+                    // correctement avec l'accélération matérielle activée.
+                    imageView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+
+                    imageView.setImageDrawable(drawable);
+
+                    OnSvgLoaded(svgAssetName);
+
+                } catch (Exception e) {
+
+                    OnSvgError("SetIconFromSvg: " + e.getMessage());
+
+                } finally {
+
+                    if (input != null) {
+                        try {
+                            input.close();
+                        } catch (Exception ignored) {
+                        }
+                    }
                 }
             }
         });
     }
 
-    @SimpleFunction(description = "Permet l'agrandissement automatique du conteneur lors de la saisie.")
-    public void EnableAutoGrowWithText(
-            final Object cardContainer,
-            final Object editTextComponent,
-            final int maxHeightPx) {
+    // =========================================================================
+    // ÉVÉNEMENTS DE TEST
+    // =========================================================================
 
-        if (!(cardContainer instanceof AndroidViewComponent) || !(editTextComponent instanceof AndroidViewComponent)) return;
+    @com.google.appinventor.components.annotations.SimpleEvent(description = "TEST — Déclenché quand le SVG a été chargé et affiché avec succès.")
+    public void OnSvgLoaded(String svgAssetName) {
+        com.google.appinventor.components.runtime.EventDispatcher.dispatchEvent(
+                this, "OnSvgLoaded", svgAssetName
+        );
+    }
 
-        final View containerView = ((AndroidViewComponent) cardContainer).getView();
-        View editView = ((AndroidViewComponent) editTextComponent).getView();
+    @com.google.appinventor.components.annotations.SimpleEvent(description = "TEST — Déclenché en cas d'erreur de chargement du SVG.")
+    public void OnSvgError(String message) {
+        com.google.appinventor.components.runtime.EventDispatcher.dispatchEvent(
+                this, "OnSvgError", message
+        );
+    }
 
-        if (!(editView instanceof EditText) || containerView == null) return;
+    // =========================================================================
+    // 3. IMAGE / ICÔNE HAUTE QUALITÉ (bitmap classique — conservé pour comparaison)
+    // =========================================================================
 
-        final EditText editText = (EditText) editView;
+    private void applyHighQualityRendering(ImageView imageView) {
 
-        editText.addTextChangedListener(new TextWatcher() {
+        Drawable d = imageView.getDrawable();
+
+        if (d instanceof BitmapDrawable) {
+
+            BitmapDrawable bd = (BitmapDrawable) d;
+
+            bd.setFilterBitmap(true);
+            bd.setAntiAlias(true);
+            bd.setDither(true);
+
+            imageView.invalidate();
+        }
+    }
+
+    @SimpleFunction(description = "Active le rendu haute qualité sur un composant Image (bitmap classique).")
+    public void SetImageHighQuality(
+            final AndroidViewComponent imageComponent) {
+
+        if (imageComponent == null) return;
+
+        final View view = imageComponent.getView();
+
+        if (!(view instanceof ImageView)) return;
+
+        activity.runOnUiThread(new Runnable() {
             @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            public void run() {
+                applyHighQualityRendering((ImageView) view);
+            }
+        });
+    }
 
+    @SimpleFunction(description = "Configure une image pour qu'elle reste proportionnelle sans être étirée (bitmap classique).")
+    public void SetIconNoDeformation(
+            final AndroidViewComponent imageComponent) {
+
+        if (imageComponent == null) return;
+
+        final View view = imageComponent.getView();
+
+        if (!(view instanceof ImageView)) return;
+
+        activity.runOnUiThread(new Runnable() {
             @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            public void run() {
 
-            @Override
-            public void afterTextChanged(Editable s) {
-                containerView.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        ViewGroup.LayoutParams params = containerView.getLayoutParams();
-                        if (params != null) {
-                            // Autorise le redimensionnement automatique selon le texte
-                            params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+                ImageView imageView = (ImageView) view;
 
-                            // Si une hauteur maximale est définie et dépassée
-                            if (maxHeightPx > 0 && containerView.getHeight() > maxHeightPx) {
-                                params.height = maxHeightPx;
-                            }
-                            containerView.setLayoutParams(params);
-                            containerView.requestLayout();
-                        }
-                    }
-                });
+                applyHighQualityRendering(imageView);
+
+                imageView.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
             }
         });
     }
