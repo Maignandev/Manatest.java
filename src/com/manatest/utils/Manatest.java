@@ -1,14 +1,10 @@
 package com.manatest.utils;
 
 import android.app.Activity;
-import android.graphics.Picture;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
-import android.graphics.drawable.PictureDrawable;
 import android.view.View;
 import android.widget.ImageView;
-
-import com.caverock.androidsvg.SVG;
 
 import com.google.appinventor.components.annotations.DesignerComponent;
 import com.google.appinventor.components.annotations.SimpleFunction;
@@ -18,11 +14,9 @@ import com.google.appinventor.components.runtime.AndroidNonvisibleComponent;
 import com.google.appinventor.components.runtime.AndroidViewComponent;
 import com.google.appinventor.components.runtime.ComponentContainer;
 
-import java.io.InputStream;
-
 @DesignerComponent(
-        version = 6,
-        description = "Manatest - Test de rendu SVG vectoriel + rendu haute qualité des icônes bitmap.",
+        version = 5,
+        description = "Manatest - Rendu haute qualité des icônes.",
         category = ComponentCategory.EXTENSION,
         nonVisible = true
 )
@@ -37,95 +31,8 @@ public class Manatest extends AndroidNonvisibleComponent {
     }
 
     // =========================================================================
-    // TEST — RENDU SVG VECTORIEL
-    // =========================================================================
-    //
-    // Charge un fichier .svg présent dans les Media/assets du projet
-    // et l'affiche dans un composant Image avec un rendu vectoriel
-    // (net à n'importe quelle taille, contrairement à un bitmap).
-    //
-    // =========================================================================
-
-    @SimpleFunction(description = "TEST — Charge un fichier SVG (depuis les Media du projet) et l'affiche dans un composant Image avec un rendu vectoriel net à toute taille.")
-    public void SetIconFromSvg(
-            final AndroidViewComponent imageComponent,
-            final String svgAssetName) {
-
-        if (imageComponent == null) {
-            OnSvgError("SetIconFromSvg: composant invalide.");
-            return;
-        }
-
-        final View view = imageComponent.getView();
-
-        if (!(view instanceof ImageView)) {
-            OnSvgError("SetIconFromSvg: le composant n'est pas une Image.");
-            return;
-        }
-
-        activity.runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-
-                InputStream input = null;
-
-                try {
-
-                    input = activity.getAssets().open(svgAssetName);
-
-                    SVG svg = SVG.getFromInputStream(input);
-
-                    Picture picture = svg.renderToPicture();
-
-                    PictureDrawable drawable = new PictureDrawable(picture);
-
-                    ImageView imageView = (ImageView) view;
-
-                    // Obligatoire : un PictureDrawable ne s'affiche pas
-                    // correctement avec l'accélération matérielle activée.
-                    imageView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-
-                    imageView.setImageDrawable(drawable);
-
-                    OnSvgLoaded(svgAssetName);
-
-                } catch (Exception e) {
-
-                    OnSvgError("SetIconFromSvg: " + e.getMessage());
-
-                } finally {
-
-                    if (input != null) {
-                        try {
-                            input.close();
-                        } catch (Exception ignored) {
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    // =========================================================================
-    // ÉVÉNEMENTS DE TEST
-    // =========================================================================
-
-    @com.google.appinventor.components.annotations.SimpleEvent(description = "TEST — Déclenché quand le SVG a été chargé et affiché avec succès.")
-    public void OnSvgLoaded(String svgAssetName) {
-        com.google.appinventor.components.runtime.EventDispatcher.dispatchEvent(
-                this, "OnSvgLoaded", svgAssetName
-        );
-    }
-
-    @com.google.appinventor.components.annotations.SimpleEvent(description = "TEST — Déclenché en cas d'erreur de chargement du SVG.")
-    public void OnSvgError(String message) {
-        com.google.appinventor.components.runtime.EventDispatcher.dispatchEvent(
-                this, "OnSvgError", message
-        );
-    }
-
-    // =========================================================================
-    // 3. IMAGE / ICÔNE HAUTE QUALITÉ (bitmap classique — conservé pour comparaison)
+    // UTILITAIRE INTERNE : applique le filtrage/anti-alias/dithering
+    // sur le Drawable réel de l'ImageView (BitmapDrawable uniquement).
     // =========================================================================
 
     private void applyHighQualityRendering(ImageView imageView) {
@@ -144,7 +51,11 @@ public class Manatest extends AndroidNonvisibleComponent {
         }
     }
 
-    @SimpleFunction(description = "Active le rendu haute qualité sur un composant Image (bitmap classique).")
+    // =========================================================================
+    // 3. IMAGE / ICÔNE HAUTE QUALITÉ
+    // =========================================================================
+
+    @SimpleFunction(description = "Active le rendu haute qualité sur un composant Image.")
     public void SetImageHighQuality(
             final AndroidViewComponent imageComponent) {
 
@@ -154,34 +65,128 @@ public class Manatest extends AndroidNonvisibleComponent {
 
         if (!(view instanceof ImageView)) return;
 
-        activity.runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                applyHighQualityRendering((ImageView) view);
-            }
-        });
+        activity.runOnUiThread(
+                new Runnable() {
+
+                    @Override
+                    public void run() {
+
+                        applyHighQualityRendering((ImageView) view);
+                    }
+                }
+        );
     }
 
-    @SimpleFunction(description = "Configure une image pour qu'elle reste proportionnelle sans être étirée (bitmap classique).")
+    // =========================================================================
+    // 4. ICÔNE AVEC TAILLE CONTRÔLÉE
+    // =========================================================================
+
+    @SimpleFunction(description = "Configure une icône avec un rendu propre et conserve ses proportions.")
+    public void SetIconRendering(
+            final AndroidViewComponent imageComponent,
+            final boolean keepRatio) {
+
+        if (imageComponent == null) return;
+
+        final View view =
+                imageComponent.getView();
+
+        if (!(view instanceof ImageView)) return;
+
+        activity.runOnUiThread(
+                new Runnable() {
+
+                    @Override
+                    public void run() {
+
+                        ImageView imageView =
+                                (ImageView) view;
+
+                        applyHighQualityRendering(imageView);
+
+                        if (keepRatio) {
+
+                            imageView.setScaleType(
+                                    ImageView.ScaleType.CENTER_INSIDE
+                            );
+
+                        } else {
+
+                            imageView.setScaleType(
+                                    ImageView.ScaleType.FIT_CENTER
+                            );
+                        }
+                    }
+                }
+        );
+    }
+
+    // =========================================================================
+    // 5. RENDU ICÔNE SANS DÉFORMATION
+    // =========================================================================
+
+    @SimpleFunction(description = "Configure une image pour qu'elle reste proportionnelle sans être étirée.")
     public void SetIconNoDeformation(
             final AndroidViewComponent imageComponent) {
 
         if (imageComponent == null) return;
 
-        final View view = imageComponent.getView();
+        final View view =
+                imageComponent.getView();
 
         if (!(view instanceof ImageView)) return;
 
-        activity.runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
+        activity.runOnUiThread(
+                new Runnable() {
 
-                ImageView imageView = (ImageView) view;
+                    @Override
+                    public void run() {
 
-                applyHighQualityRendering(imageView);
+                        ImageView imageView =
+                                (ImageView) view;
 
-                imageView.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-            }
-        });
+                        applyHighQualityRendering(imageView);
+
+                        imageView.setScaleType(
+                                ImageView.ScaleType.CENTER_INSIDE
+                        );
+                    }
+                }
+        );
+    }
+
+    // =========================================================================
+    // 6. RENDU ICÔNE POUR REMPLIR LA ZONE SANS DÉFORMATION
+    // =========================================================================
+
+    @SimpleFunction(description = "Agrandit une icône pour remplir son ImageView sans déformer ses proportions.")
+    public void SetIconCenterCrop(
+            final AndroidViewComponent imageComponent) {
+
+        if (imageComponent == null) return;
+
+        final View view =
+                imageComponent.getView();
+
+        if (!(view instanceof ImageView)) return;
+
+        activity.runOnUiThread(
+                new Runnable() {
+
+                    @Override
+                    public void run() {
+
+                        ImageView imageView =
+                                (ImageView) view;
+
+                        applyHighQualityRendering(imageView);
+
+                        imageView.setScaleType(
+                                ImageView.ScaleType.CENTER_CROP
+                        );
+                    }
+                }
+        );
     }
 }
+
