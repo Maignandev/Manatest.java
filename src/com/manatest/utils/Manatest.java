@@ -63,7 +63,7 @@ import java.util.Locale;
 import java.util.Map;
 
 @DesignerComponent(
-        version = 7,
+        version = 8,
         description = "Manatest - Formulaire « Ajouter un produit » construit en code : titre à saisie directe, multimédia (5 photos), lignes cliquables, stock +/-, validation, brouillon, JSON pour le serveur.",
         category = ComponentCategory.EXTENSION,
         nonVisible = true
@@ -215,9 +215,9 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
     // ÉVÉNEMENTS
     // =========================================================================
 
-    @SimpleEvent(description = "L'utilisateur a touché une ligne du formulaire. fieldKey : description, category, price, variants, condition, color, size, stock (bouton Modifier), address ou delivery. Ouvre le panneau de saisie correspondant. (Le titre se saisit directement dans le formulaire, et les photos s'ouvrent toutes seules.)")
-    public void OnProductFormFieldClick(String fieldKey) {
-        EventDispatcher.dispatchEvent(this, "OnProductFormFieldClick", fieldKey);
+    @SimpleEvent(description = "L'utilisateur a touché une ligne du formulaire. id : description, category, price, variants, condition, color, size, stock (bouton Modifier), address ou delivery. Ouvre le panneau de saisie correspondant. (Le titre se saisit directement dans le formulaire, et les photos s'ouvrent toutes seules.)")
+    public void OnProductFormFieldClick(String id) {
+        EventDispatcher.dispatchEvent(this, "OnProductFormFieldClick", id);
     }
 
     @SimpleEvent(description = "Déclenché après sélection : les photos sont validées (5 photos atteintes, ou bouton OK touché). photosJson : liste JSON de liens file:// ; count : nombre de photos.")
@@ -233,6 +233,11 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
     @SimpleEvent(description = "Le stock a changé avec les boutons plus / moins.")
     public void OnProductStockChanged(int stock) {
         EventDispatcher.dispatchEvent(this, "OnProductStockChanged", stock);
+    }
+
+    @SimpleEvent(description = "Une valeur vient d'être enregistrée (SetProductFormValue ou boutons plus/moins du stock). fieldKey : le champ, value : la valeur enregistrée. Sert à afficher ou utiliser la réponse.")
+    public void OnProductFormValueSaved(String fieldKey, String value) {
+        EventDispatcher.dispatchEvent(this, "OnProductFormValueSaved", fieldKey, value);
     }
 
     @SimpleEvent(description = "ValidateProductForm a trouvé un champ invalide. La ligne concernée passe en rouge.")
@@ -857,11 +862,15 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
 
     private void addIconTextRow(String key, String iconChar, String placeholder, int maxLines) {
         LinearLayout row = rowBase(22, 22, 16, 22, true);
-        TextView ic = icon(iconChar, iconSize, iconColor(), 14);
+        TextView ic = has(key) ? null : icon(iconChar, iconSize, iconColor(), 14);
         if (ic != null) {
             row.addView(ic);
         }
-        TextView t = text(has(key) ? get(key) : placeholder, 22, valueColor(key), false, maxLines);
+        int vc = valueColor(key);
+        if (key.equals("category") && has(key) && !key.equals(invalidKey)) {
+            vc = col("#6E3FC4");
+        }
+        TextView t = text(has(key) ? get(key) : placeholder, 22, vc, false, maxLines);
         weight(t);
         row.addView(t);
         clickable(row, key);
@@ -936,6 +945,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         saveDraft();
         render();
         OnProductStockChanged(n);
+        OnProductFormValueSaved("stock", String.valueOf(n));
     }
 
     private TextView stepButton(String glyphChar, String fallback, final int delta) {
@@ -1096,6 +1106,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         }
         saveDraft();
         render();
+        OnProductFormValueSaved(k, v);
     }
 
     @SimpleFunction(description = "Retourne la vraie valeur entière d'un champ (pas le texte coupé de l'écran). Sert à préremplir un panneau de saisie.")
@@ -1106,6 +1117,19 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
     @SimpleFunction(description = "Retourne le stock actuel (nombre entier, 0 par défaut). Utile pour l'afficher ailleurs ou pour l'envoi au serveur.")
     public int GetProductFormStock() {
         return currentStock();
+    }
+
+    @SimpleFunction(description = "Retourne vrai si le texte saisi dans un panneau est différent de la valeur déjà enregistrée pour ce champ (modification non enregistrée). Sert au bouton × (annuler) pour décider d'afficher une alerte. Le prix et le stock sont comparés après mise en forme (« 198 » = « 198.00 »).")
+    public boolean IsProductFieldModified(String fieldKey, String value) {
+        String k = fieldKey == null ? "" : fieldKey.trim();
+        String v = value == null ? "" : value.trim();
+        if (k.equals("price") && !v.isEmpty()) {
+            String n = normalizePrice(v);
+            if (!n.isEmpty()) v = n;
+        } else if (k.equals("stock") && v.matches("\\d{1,6}")) {
+            v = String.valueOf(Integer.parseInt(v));
+        }
+        return !v.equals(get(k));
     }
 
     @SimpleFunction(description = "Retourne le produit complet en JSON, prêt à envoyer au serveur : title, description, category, category_id, price (nombre), currency (HTG), condition, color, size, stock (nombre), address, delivery, deliveryIncluded, images (liste), image, image2 à image5.")
@@ -1217,7 +1241,9 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         try {
             BigDecimal bd = new BigDecimal(amount);
             String s = String.format(Locale.US, "%,.2f", bd);
-            return s.replace(",", " ").replace(".", ",") + " HTG";
+            String r = s.replace(",", " ").replace(".", ",");
+            if (r.endsWith(",00")) r = r.substring(0, r.length() - 3);
+            return r + " HTG";
         } catch (Exception e) {
             return amount + " HTG";
         }
