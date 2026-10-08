@@ -111,6 +111,8 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
     private String iconStore = "";
     private String iconTruck = "";
     private int iconSize = 22;
+    private Typeface customFont;
+    private Typeface customBoldFont;
     private String invalidKey = "";
 
     public Manatest(ComponentContainer container) {
@@ -199,6 +201,10 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
     }
 
     private Typeface loadFont(String fontPath) {
+        return loadFontNamed(fontPath, "BuildProductForm");
+    }
+
+    private Typeface loadFontNamed(String fontPath, String who) {
         if (fontPath == null || fontPath.trim().isEmpty()) return null;
         try {
             if (fontPath.startsWith("/")) {
@@ -206,7 +212,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
             }
             return Typeface.createFromAsset(context.getAssets(), fontPath);
         } catch (Exception e) {
-            OnError("BuildProductForm: police introuvable (" + fontPath + ").");
+            OnError(who + ": police introuvable (" + fontPath + ").");
             return null;
         }
     }
@@ -254,7 +260,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
     // CONSTRUCTION DU FORMULAIRE
     // =========================================================================
 
-    @SimpleFunction(description = "Construit le formulaire « Ajouter un produit » dans l'arrangement donné. fontPath : police Phosphor (ex: Phosphor-Bold.ttf). plusChar : icône « + » . minusChar : icône « - » du stock. photoChar : icône photo. storeChar : icône adresse. truckChar : icône livraison. Caractère Phosphor ou code hexadécimal (ex: e3d2). Vide = pas d'icône. iconSize : taille des icônes (ex: 22).")
+    @SimpleFunction(description = "Construit le formulaire « Ajouter un produit » dans l'arrangement donné. fontPath : police Phosphor (ex: Phosphor-Bold.ttf). plusChar : icône « + » . minusChar : icône « - » du stock. photoChar : icône photo. storeChar : icône adresse. truckChar : icône livraison. Caractère Phosphor ou code hexadécimal (ex: e3d2). Vide = pas d'icône. iconSize : taille des icônes UNIQUEMENT, le texte n'est pas touché (ex: 22).")
     public void BuildProductForm(
             final AndroidViewComponent container,
             final String fontPath,
@@ -290,6 +296,30 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
                 } catch (Exception e) {
                     OnError("BuildProductForm: " + e.getMessage());
                 }
+            }
+        });
+    }
+
+    @SimpleFunction(description = "Charge la police du texte du formulaire (ex: Manrope-Medium.ttf placé dans les Assets). Vide = police par défaut. S'applique à tout le texte, y compris le titre. Si le formulaire est déjà affiché, il est mis à jour.")
+    public void LoadCustomFont(String fontPath) {
+        customFont = loadFontNamed(fontPath, "LoadCustomFont");
+        applyFonts();
+    }
+
+    @SimpleFunction(description = "Charge (facultatif) la police des grands titres (ex: Manrope-Bold.ttf). Sans elle, les grands titres utilisent la police normale en gras.")
+    public void LoadCustomBoldFont(String fontPath) {
+        customBoldFont = loadFontNamed(fontPath, "LoadCustomBoldFont");
+        applyFonts();
+    }
+
+    private void applyFonts() {
+        runOnUi(new Runnable() {
+            @Override
+            public void run() {
+                if (titleEdit != null) {
+                    titleEdit.setTypeface(customFont != null ? customFont : Typeface.DEFAULT);
+                }
+                if (formContainer != null) render();
             }
         });
     }
@@ -345,7 +375,15 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         t.setTextSize(sp);
         t.setTextColor(color);
         if (bold) {
-            t.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+            if (customBoldFont != null) {
+                t.setTypeface(customBoldFont);
+            } else if (customFont != null) {
+                t.setTypeface(Typeface.create(customFont, Typeface.BOLD));
+            } else {
+                t.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+            }
+        } else if (customFont != null) {
+            t.setTypeface(customFont);
         }
         if (maxLines > 0) {
             t.setMaxLines(maxLines);
@@ -443,10 +481,16 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         }
     }
 
+    // Taille des tuiles photo : ~34 % de la largeur de l'écran (entre 100 et 180 dp)
+    private int tileSize() {
+        int w = context.getResources().getDisplayMetrics().widthPixels;
+        return Math.max(dp(100), Math.min(dp(180), (int) (w * 0.34f)));
+    }
+
     private LinearLayout tileBase(int fillColor, int strokeColor) {
         LinearLayout tile = new LinearLayout(context);
         tile.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(130), dp(130));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(tileSize(), tileSize());
         lp.setMargins(0, 0, dp(12), 0);
         tile.setLayoutParams(lp);
         GradientDrawable bg = new GradientDrawable();
@@ -525,7 +569,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
             if (ic != null) {
                 plus.addView(ic);
             } else {
-                TextView fb = text("+", iconSize + 12, col("#6E6E73"), false, 1);
+                TextView fb = text("+", 28, col("#6E6E73"), false, 1);
                 plus.addView(fb);
             }
             plus.setOnClickListener(pick);
@@ -537,7 +581,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
 
         TextView hint = text(pending.isEmpty() ? "Ajouter des photos"
                 : "Maintiens une photo pour la retirer",
-                pending.isEmpty() ? 22 : 14, col("#6E6E73"), false, 1);
+                18, col("#6E6E73"), false, 1);
         hint.setGravity(Gravity.CENTER);
         hint.setLayoutParams(new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -548,7 +592,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
 
     private View filledTile(final int index, String path) {
         ImageView iv = new ImageView(context);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(130), dp(130));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(tileSize(), tileSize());
         lp.setMargins(0, 0, dp(12), 0);
         iv.setLayoutParams(lp);
         iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -781,9 +825,10 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
     private void createTitleEdit() {
         titleEdit = new EditText(context);
         titleEdit.setHint("Titre du produit");
-        titleEdit.setHintTextColor(col("#6E6E73"));
+        titleEdit.setHintTextColor(cText());   // #1A1A1B + alpha C0
         titleEdit.setTextSize(22);
-        titleEdit.setTextColor(cText());
+        titleEdit.setTextColor(cHead());   // #1A1A1B + alpha E9
+        titleEdit.setTypeface(customFont != null ? customFont : Typeface.DEFAULT);
         titleEdit.setBackground(null);
         titleEdit.setSingleLine(true);
         titleEdit.setPadding(0, dp(10), 0, dp(10));
@@ -810,7 +855,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
                 if (invalidKey.equals("title")) {
                     invalidKey = "";
                 }
-                titleEdit.setTextColor(cText());
+                titleEdit.setTextColor(cHead());
                 saveDraft();
                 OnProductTitleChanged(v);
             }
@@ -853,7 +898,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         LinearLayout row = rowBase(22, 12, 16, 12, true);
         titleEdit.setLayoutParams(new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        titleEdit.setTextColor(valueColor("title"));
+        titleEdit.setTextColor(invalidKey.equals("title") ? col("#D93025") : cHead());
         row.addView(titleEdit);
         formContainer.addView(row);
     }
@@ -870,7 +915,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         if (key.equals("category") && has(key) && !key.equals(invalidKey)) {
             vc = col("#6E3FC4");
         }
-        TextView t = text(has(key) ? get(key) : placeholder, 22, vc, false, maxLines);
+        TextView t = text(has(key) ? get(key) : placeholder, 18, vc, false, maxLines);
         weight(t);
         row.addView(t);
         clickable(row, key);
@@ -880,7 +925,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
     private void addPriceRow() {
         LinearLayout row = rowBase(22, 22, 16, 22, true);
         String shown = has("price") ? formatPrice(get("price")) : "0,00 HTG";
-        TextView t = text(shown, 22, valueColor("price"), false, 1);
+        TextView t = text(shown, 18, valueColor("price"), false, 1);
         weight(t);
         row.addView(t);
         clickable(row, "price");
@@ -899,7 +944,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
             if (ic != null) {
                 row.addView(ic);
             }
-            TextView t = text("Plus d'options (neuf, couleur...)", 22, col("#6E6E73"), false, 1);
+            TextView t = text("Plus d'options (neuf, couleur...)", 18, col("#6E6E73"), false, 1);
             weight(t);
             row.addView(t);
             clickable(row, "variants");
@@ -915,10 +960,10 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         for (int i = 0; i < lines.length; i++) {
             String key = lines[i][0];
             LinearLayout row = rowBase(22, 8, 22, i == lines.length - 1 ? 16 : 8, true);
-            TextView label = text(lines[i][1], 22, cText(), false, 1);
+            TextView label = text(lines[i][1], 18, cText(), false, 1);
             weight(label);
             row.addView(label);
-            TextView value = text(has(key) ? get(key) : "—", 22, valueColor(key), false, 1);
+            TextView value = text(has(key) ? get(key) : "—", 18, valueColor(key), false, 1);
             value.setGravity(Gravity.END);
             value.setLayoutParams(new LinearLayout.LayoutParams(
                     0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
@@ -958,7 +1003,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
             b.setIncludeFontPadding(false);
         } else {
             b.setText(fallback);
-            b.setTextSize(iconSize + 8);
+            b.setTextSize(26);
             b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         }
         b.setTextColor(iconColor());
@@ -991,13 +1036,13 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         formContainer.addView(head);
 
         LinearLayout row = rowBase(22, 6, 12, 18, true);
-        TextView label = text("Disponible", 22, cText(), false, 1);
+        TextView label = text("Disponible", 18, cText(), false, 1);
         weight(label);
         row.addView(label);
 
         row.addView(stepButton(iconMinus, "−", -1));
 
-        TextView box = text(String.valueOf(currentStock()), 22, valueColor("stock"), false, 1);
+        TextView box = text(String.valueOf(currentStock()), 18, valueColor("stock"), false, 1);
         box.setGravity(Gravity.CENTER);
         box.setMinWidth(dp(90));
         box.setMinHeight(dp(42));
@@ -1028,7 +1073,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         head.addView(text("Adresse", 18, cHead(), true, 1));
         row.addView(head);
 
-        TextView value = text(has("address") ? get("address") : "Ajouter une adresse", 22,
+        TextView value = text(has("address") ? get("address") : "Ajouter une adresse", 18,
                 valueColor("address"), false, 2);
         LinearLayout.LayoutParams vp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -1047,11 +1092,11 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         if (ic != null) {
             row.addView(ic);
         }
-        TextView label = text("Livraison", 22, cText(), false, 1);
+        TextView label = text("Livraison", 18, cText(), false, 1);
         weight(label);
         row.addView(label);
         if (has("delivery")) {
-            row.addView(text(get("delivery"), 22, valueColor("delivery"), false, 1));
+            row.addView(text(get("delivery"), 18, valueColor("delivery"), false, 1));
         }
         clickable(row, "delivery");
         formContainer.addView(row);
@@ -1199,6 +1244,11 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
             if (len > MAX_SHORT) return "Trop long : " + len + "/" + MAX_SHORT + ".";
         }
         return "";
+    }
+
+    @SimpleFunction(description = "Retourne vrai si la valeur du champ est valide, faux sinon. À mettre directement dans un « si », sans comparaison. Pour lire le message d'erreur, utilise ValidateProductField.")
+    public boolean IsProductFieldValid(String fieldKey, String value) {
+        return ValidateProductField(fieldKey, value).isEmpty();
     }
 
     @SimpleFunction(description = "Vérifie tout le formulaire avant l'envoi. Retourne \"\" si tout est bon, sinon le premier message d'erreur. La ligne concernée passe en rouge et OnProductFormInvalid est déclenché.")
