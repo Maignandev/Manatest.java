@@ -1,30 +1,29 @@
 package com.manatest.utils;
 
-import android.animation.ArgbEvaluator;
 import android.app.Activity;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Environment;
+import android.text.TextUtils;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
-import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.ViewParent;
 import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
-import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -51,8 +50,8 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 
 @DesignerComponent(
-        version = 10,
-        description = "Manatest - Page d'accueil boutique : header avec le logo du vendeur, bouton Ajouter un produit, compteur d'articles, menu hamburger et barre de statut dynamique. Le header (arrangement non scrollable) défile avec la grille (arrangement scrollable).",
+        version = 11,
+        description = "Manatest - Page boutique unique pour le vendeur et les visiteurs : header avec le logo, barre de statut transparente, bouton Ajouter un produit (vendeur), compteur d'articles et menu hamburger. Le header se place dans l'arrangement scrollable, au-dessus de la grille, et défile avec elle.",
         category = ComponentCategory.EXTENSION,
         nonVisible = true
 )
@@ -60,48 +59,56 @@ import java.net.URL;
 @UsesPermissions(permissionNames = "android.permission.INTERNET")
 public class Manatest extends AndroidNonvisibleComponent {
 
-    private static final int PAGE_COLOR = Color.WHITE;
-    private static final int DEFAULT_HEADER_COLOR = Color.parseColor("#1A1A1B");
+    // Mêmes préférences que ManaplaceUtils / création de boutique
+    private static final String PREFS_NAME = "ManaplaceShop";
+    private static final String PREF_CURRENT_UID = "current_uid";
+    private static final String HEADER_TAG = "manatest_header";
 
     private final Context context;
     private final Activity activity;
 
     private Typeface customFont;
 
-    // Données
+    // Données de la boutique affichée
+    private String shopUidValue = "";
+    private boolean ownerFlag = false;
     private String shopNameValue = "";
     private String shopCategoryValue = "";
     private int articleCount = 0;
     private Bitmap logoBitmap;
-    private int headerColor = DEFAULT_HEADER_COLOR;
 
-    // Dimensions (en pixels)
-    private int screenW;
+    // Couleurs déduites du logo (calculées sur fond blanc)
+    private int topColor = Color.WHITE;
+    private double topLum = 1.0;
+    private double contentLum = 1.0;
+    private int onColor = Color.parseColor("#1A1A1B");
+
+    // Dimensions
     private int screenH;
+    private int statusBarH;
     private int logoHeightPx;
-    private int headerTotalPx;
+    private int extraTop = 0;       // partie du logo qui passe sous la barre de statut
+    private boolean edgeMode = false; // vrai : le contenu démarre sous la barre (transparente)
 
     // Vues
-    private View headerRoot;
-    private View scrollOuter;
+    private LinearLayout headerHolder;
     private ScrollView scrollView;
+    private FrameLayout logoFrame;
+    private LinearLayout.LayoutParams logoFrameParams;
+    private FrameLayout contentLayer;
     private ImageView logoImage;
-    private View scrimView;
+    private HamburgerView hamburger;
     private TextView nameTv;
     private TextView categoryTv;
     private TextView countTv;
+    private View statusScrim;
     private ViewTreeObserver.OnScrollChangedListener scrollListener;
 
-    // Ajustement du conteneur scrollable (fait une seule fois par vue)
-    private View adjustedScrollView;
-    private int origScrollHeight;
-    private View adjustedInner;
-    private int origInnerPadTop;
-
     // Barre de statut d'origine
-    private boolean statusSaved = false;
+    private boolean barsSaved = false;
     private int origStatusColor;
     private int origSysUiFlags;
+    private Drawable origDecorBg;
 
     // Menu
     private FrameLayout menuOverlay;
@@ -141,6 +148,10 @@ public class Manatest extends AndroidNonvisibleComponent {
         });
     }
 
+    private SharedPreferences prefs() {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+    }
+
     private TextView text(String s, int sp, int color) {
         TextView t = new TextView(context);
         t.setText(s);
@@ -148,30 +159,6 @@ public class Manatest extends AndroidNonvisibleComponent {
         t.setTextColor(color);
         if (customFont != null) t.setTypeface(customFont);
         return t;
-    }
-
-    private ViewGroup realLayout(AndroidViewComponent component) {
-        if (component == null) return null;
-        View v = component.getView();
-        for (int i = 0; i < 3; i++) {
-            if (v instanceof ScrollView || v instanceof HorizontalScrollView) {
-                ViewGroup sv = (ViewGroup) v;
-                if (sv.getChildCount() > 0 && sv.getChildAt(0) instanceof ViewGroup) {
-                    v = sv.getChildAt(0);
-                    continue;
-                }
-                break;
-            }
-            if (v instanceof FrameLayout) {
-                ViewGroup fl = (ViewGroup) v;
-                if (fl.getChildCount() == 1 && fl.getChildAt(0) instanceof ViewGroup) {
-                    v = fl.getChildAt(0);
-                    continue;
-                }
-            }
-            break;
-        }
-        return v instanceof ViewGroup ? (ViewGroup) v : null;
     }
 
     private ScrollView findScrollView(View v, int depth) {
@@ -193,23 +180,40 @@ public class Manatest extends AndroidNonvisibleComponent {
         return v < 0f ? 0f : (v > 1f ? 1f : v);
     }
 
+    private int blend(int a, int b, float p) {
+        return Color.rgb(
+                (int) (Color.red(a) + (Color.red(b) - Color.red(a)) * p),
+                (int) (Color.green(a) + (Color.green(b) - Color.green(a)) * p),
+                (int) (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * p));
+    }
+
+    private int statusBarHeight() {
+        int id = context.getResources().getIdentifier("status_bar_height", "dimen", "android");
+        return id > 0 ? context.getResources().getDimensionPixelSize(id) : dp(24);
+    }
+
+    private boolean isOwner(String uid) {
+        String me = prefs().getString(PREF_CURRENT_UID, "");
+        return uid != null && !uid.isEmpty() && uid.equals(me);
+    }
+
     // =========================================================================
     // ÉVÉNEMENTS
     // =========================================================================
 
-    @SimpleEvent(description = "L'utilisateur a touché le bouton « Ajouter un produit ».")
+    @SimpleEvent(description = "Le vendeur propriétaire a touché « Ajouter un produit ».")
     public void OnAddProductClick() {
         EventDispatcher.dispatchEvent(this, "OnAddProductClick");
     }
 
-    @SimpleEvent(description = "L'utilisateur a touché « Mes infos » dans le menu. Ouvre ici la page correspondante.")
-    public void OnUpdateInfosClick() {
-        EventDispatcher.dispatchEvent(this, "OnUpdateInfosClick");
+    @SimpleEvent(description = "Le vendeur propriétaire a touché « Édit » dans le menu. Ouvre ici la page d'édition de la boutique. shopUid : l'UID de la boutique.")
+    public void OnEditShopClick(String shopUid) {
+        EventDispatcher.dispatchEvent(this, "OnEditShopClick", shopUid);
     }
 
-    @SimpleEvent(description = "L'utilisateur a touché « Détails » dans le menu. Ouvre ici la page correspondante.")
-    public void OnShopDetailsClick() {
-        EventDispatcher.dispatchEvent(this, "OnShopDetailsClick");
+    @SimpleEvent(description = "Quelqu'un a touché « Contact » dans le menu. Ouvre ici la page des infos de la boutique. shopUid : l'UID de la boutique.")
+    public void OnShopContactClick(String shopUid) {
+        EventDispatcher.dispatchEvent(this, "OnShopContactClick", shopUid);
     }
 
     @SimpleEvent(description = "Le logo du header est chargé et affiché.")
@@ -217,7 +221,7 @@ public class Manatest extends AndroidNonvisibleComponent {
         EventDispatcher.dispatchEvent(this, "OnShopLogoLoaded");
     }
 
-    @SimpleEvent(description = "Une erreur s'est produite (construction, logo, JSON).")
+    @SimpleEvent(description = "Une erreur s'est produite (construction, logo, JSON). Les messages [diag] expliquent pourquoi la page ne s'affiche pas correctement.")
     public void OnError(String message) {
         EventDispatcher.dispatchEvent(this, "OnError", message);
     }
@@ -263,7 +267,17 @@ public class Manatest extends AndroidNonvisibleComponent {
         }
     }
 
-    @SimpleFunction(description = "Définit le nom de la boutique (grand texte blanc du header) et sa catégorie (texte blanc centré en haut).")
+    @SimpleFunction(description = "Mémorise l'utilisateur connecté (UID Firebase). À appeler une fois à la connexion : BuildShopHome s'en sert pour savoir si la boutique affichée est la sienne.")
+    public void SetShopUser(String uid) {
+        prefs().edit().putString(PREF_CURRENT_UID, uid == null ? "" : uid.trim()).apply();
+    }
+
+    @SimpleFunction(description = "Retourne vrai si la boutique affichée appartient à l'utilisateur connecté (SetShopUser).")
+    public boolean IsShopOwner() {
+        return isOwner(shopUidValue);
+    }
+
+    @SimpleFunction(description = "Définit le nom de la boutique (grand texte centré du header) et sa catégorie (texte centré en haut).")
     public void SetShopHeader(final String name, final String category) {
         shopNameValue = name == null ? "" : name.trim();
         shopCategoryValue = category == null ? "" : category.trim();
@@ -277,7 +291,7 @@ public class Manatest extends AndroidNonvisibleComponent {
     }
 
     // =========================================================================
-    // CONSTRUCTION DE LA PAGE
+    // ICÔNES
     // =========================================================================
 
     private class HamburgerView extends View {
@@ -288,6 +302,11 @@ public class Manatest extends AndroidNonvisibleComponent {
             paint.setColor(Color.WHITE);
             paint.setStrokeWidth((float) dp(3));
             paint.setStrokeCap(Paint.Cap.ROUND);
+        }
+
+        void setColor(int color) {
+            paint.setColor(color);
+            invalidate();
         }
 
         @Override
@@ -321,11 +340,13 @@ public class Manatest extends AndroidNonvisibleComponent {
         }
     }
 
-    @SimpleFunction(description = "Construit la page boutique. headerContainer : arrangement NON scrollable, vide, placé juste au-dessus de scrollContainer dans le même arrangement vertical. scrollContainer : arrangement scrollable où ManaplaceUtils construit la grille (BuildProductGridFromJson). Le header et la grille défilent ensemble. Le contenu de headerContainer est remplacé.")
-    public void BuildShopHome(final AndroidViewComponent headerContainer,
-                              final AndroidViewComponent scrollContainer) {
-        if (headerContainer == null || headerContainer.getView() == null
-                || scrollContainer == null || scrollContainer.getView() == null) {
+    // =========================================================================
+    // CONSTRUCTION DE LA PAGE
+    // =========================================================================
+
+    @SimpleFunction(description = "Construit la page boutique dans l'arrangement scrollable donné : le header (logo, nom, bouton, compteur) se place tout en haut, la grille de ManaplaceUtils (BuildProductGridFromJson, version corrigée) se place dessous, et tout défile ensemble. shopUid : l'UID de la boutique à afficher. Si c'est celui de l'utilisateur connecté (SetShopUser), la page est celle du vendeur : bouton « Ajouter un produit » et « Édit » dans le menu. Sinon c'est un visiteur : seulement « Contact ».")
+    public void BuildShopHome(final AndroidViewComponent scrollContainer, final String shopUid) {
+        if (scrollContainer == null || scrollContainer.getView() == null) {
             OnError("BuildShopHome: conteneur invalide.");
             return;
         }
@@ -333,7 +354,7 @@ public class Manatest extends AndroidNonvisibleComponent {
             @Override
             public void run() {
                 try {
-                    buildShopHomeInternal(headerContainer, scrollContainer);
+                    buildShopHomeInternal(scrollContainer, shopUid);
                 } catch (Exception e) {
                     OnError("BuildShopHome: " + e.getMessage());
                 }
@@ -341,76 +362,70 @@ public class Manatest extends AndroidNonvisibleComponent {
         });
     }
 
-    private void buildShopHomeInternal(AndroidViewComponent headerContainer,
-                                       AndroidViewComponent scrollContainer) {
-        View hv = headerContainer.getView();
-        View sv = scrollContainer.getView();
-        ViewGroup content = realLayout(headerContainer);
-        ScrollView sc = findScrollView(sv, 0);
-
-        if (content == null) {
-            OnError("BuildShopHome: headerContainer doit être un arrangement.");
-            return;
-        }
-        if (sc == null) {
-            OnError("BuildShopHome: scrollContainer doit être un arrangement vertical scrollable.");
-            return;
-        }
-        ViewParent p = hv.getParent();
-        if (!(p instanceof LinearLayout) || sv.getParent() != p
-                || ((LinearLayout) p).getOrientation() != LinearLayout.VERTICAL) {
-            OnError("BuildShopHome: place les deux arrangements l'un sous l'autre dans le même arrangement vertical.");
-            return;
-        }
-        LinearLayout parent = (LinearLayout) p;
-        if (parent.indexOfChild(hv) >= parent.indexOfChild(sv)) {
-            OnError("BuildShopHome: le header doit être placé au-dessus de l'arrangement scrollable.");
-            return;
-        }
-
-        detachScrollListener();
+    private void buildShopHomeInternal(AndroidViewComponent container, String uid) {
         ensureDefaultFont();
 
+        ScrollView sc = findScrollView(container.getView(), 0);
+        if (sc == null) {
+            OnError("BuildShopHome: le conteneur doit être un arrangement vertical scrollable.");
+            return;
+        }
+        if (sc.getChildCount() == 0 || !(sc.getChildAt(0) instanceof LinearLayout)
+                || ((LinearLayout) sc.getChildAt(0)).getOrientation() != LinearLayout.VERTICAL) {
+            OnError("BuildShopHome: contenu de l'arrangement scrollable inattendu.");
+            return;
+        }
+        LinearLayout inner = (LinearLayout) sc.getChildAt(0);
+
+        detachScrollListener();
+        destroyMenu();
+
+        shopUidValue = uid == null ? "" : uid.trim();
+        ownerFlag = isOwner(shopUidValue);
+
         DisplayMetrics dm = context.getResources().getDisplayMetrics();
-        screenW = dm.widthPixels;
         screenH = dm.heightPixels;
+        int screenW = dm.widthPixels;
+        statusBarH = statusBarHeight();
         logoHeightPx = (int) (screenH * 0.35);
         int btnH = (int) (screenH * 0.07);
         int btnW = (int) (screenW * 0.80);
         int cardH = (int) (screenH * 0.05);
         int cardW = (int) (screenW * 0.30);
-        headerTotalPx = logoHeightPx + dp(10) + btnH + dp(6) + cardH + dp(10);
 
-        headerRoot = hv;
-        scrollOuter = sv;
-        scrollView = sc;
+        // Retire un ancien header avant d'en poser un nouveau
+        for (int i = inner.getChildCount() - 1; i >= 0; i--) {
+            if (HEADER_TAG.equals(inner.getChildAt(i).getTag())) inner.removeViewAt(i);
+        }
 
-        // ---- contenu du header ----
-        LinearLayout wrapper = new LinearLayout(context);
-        wrapper.setOrientation(LinearLayout.VERTICAL);
-        wrapper.setLayoutParams(new ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, headerTotalPx));
+        LinearLayout holder = new LinearLayout(context);
+        holder.setOrientation(LinearLayout.VERTICAL);
+        holder.setTag(HEADER_TAG);
+        holder.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
-        wrapper.addView(buildLogoFrame());
+        holder.addView(buildLogoFrame());
 
-        TextView btn = text("Ajouter un produit", 15, Color.WHITE);
-        btn.setGravity(Gravity.CENTER);
-        GradientDrawable btnBg = new GradientDrawable();
-        btnBg.setColor(Color.argb(0xED, 0x1A, 0x1A, 0x1B));
-        btnBg.setCornerRadius(dp(20));
-        btn.setBackground(btnBg);
-        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(btnW, btnH);
-        bp.gravity = Gravity.CENTER_HORIZONTAL;
-        bp.topMargin = dp(10);
-        btn.setLayoutParams(bp);
-        btn.setClickable(true);
-        btn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                OnAddProductClick();
-            }
-        });
-        wrapper.addView(btn);
+        if (ownerFlag) {
+            TextView btn = text("Ajouter un produit", 15, Color.WHITE);
+            btn.setGravity(Gravity.CENTER);
+            GradientDrawable btnBg = new GradientDrawable();
+            btnBg.setColor(Color.argb(0xED, 0x1A, 0x1A, 0x1B));
+            btnBg.setCornerRadius(dp(20));
+            btn.setBackground(btnBg);
+            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(btnW, btnH);
+            bp.gravity = Gravity.CENTER_HORIZONTAL;
+            bp.topMargin = dp(10);
+            btn.setLayoutParams(bp);
+            btn.setClickable(true);
+            btn.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    OnAddProductClick();
+                }
+            });
+            holder.addView(btn);
+        }
 
         countTv = text(countLabel(articleCount), 12, ink(0x7E));
         countTv.setGravity(Gravity.CENTER);
@@ -421,121 +436,85 @@ public class Manatest extends AndroidNonvisibleComponent {
         LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(cardW, cardH);
         cp.gravity = Gravity.END;
         cp.rightMargin = dp(15);
-        cp.topMargin = dp(6);
+        cp.topMargin = ownerFlag ? dp(6) : dp(10);
         cp.bottomMargin = dp(10);
         countTv.setLayoutParams(cp);
-        wrapper.addView(countTv);
+        holder.addView(countTv);
 
-        content.removeAllViews();
-        content.addView(wrapper);
+        inner.addView(holder, 0);
 
-        ViewGroup.LayoutParams hl = hv.getLayoutParams();
-        if (hl != null) {
-            hl.height = headerTotalPx;
-            hv.setLayoutParams(hl);
-        }
+        headerHolder = holder;
+        scrollView = sc;
 
-        // ---- le header passe au-dessus de la grille et défile avec elle ----
-        hv.setOutlineProvider(null);
-        hv.setTranslationZ((float) dp(2));
-
-        ViewGroup.LayoutParams sl = sv.getLayoutParams();
-        if (!(sl instanceof ViewGroup.MarginLayoutParams)) {
-            OnError("BuildShopHome: arrangement scrollable incompatible.");
-            return;
-        }
-        ViewGroup.MarginLayoutParams mlp = (ViewGroup.MarginLayoutParams) sl;
-        if (adjustedScrollView != sv) {
-            adjustedScrollView = sv;
-            origScrollHeight = mlp.height;
-        }
-        mlp.topMargin = -headerTotalPx;
-        if (origScrollHeight > 0) mlp.height = origScrollHeight + headerTotalPx;
-        sv.setLayoutParams(mlp);
-
-        // La grille de ManaplaceUtils vide et remplit ce contenu interne : son padding reste
-        View inner = sc.getChildAt(0);
-        if (inner == null) {
-            OnError("BuildShopHome: l'arrangement scrollable n'a pas de contenu interne.");
-            return;
-        }
-        if (adjustedInner != inner) {
-            adjustedInner = inner;
-            origInnerPadTop = inner.getPaddingTop();
-        }
-        inner.setPadding(inner.getPaddingLeft(), origInnerPadTop + headerTotalPx,
-                inner.getPaddingRight(), inner.getPaddingBottom());
-
-        saveStatusBar();
-        attachScrollListener();
+        saveSystemBars();
+        applySystemBars();
         applyLogoToView();
+        attachScrollListener();
         applyScroll();
 
-        // Le Form peut réappliquer sa couleur de statut juste après Initialize : on réapplique
-        final View hvFinal = hv;
-        hv.postDelayed(new Runnable() {
+        // Le Form peut réappliquer ses couleurs après Initialize, et la disposition finale
+        // n'est connue qu'après le premier affichage : on détecte et on réapplique
+        int[] delays = {150, 450, 1000};
+        for (int i = 0; i < delays.length; i++) {
+            holder.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    applySystemBars();
+                    detectEdge();
+                }
+            }, delays[i]);
+        }
+        holder.postDelayed(new Runnable() {
             @Override
             public void run() {
-                applyScroll();
+                diagnose();
             }
-        }, 400);
-        hv.postDelayed(new Runnable() {
+        }, 1500);
+        holder.postDelayed(new Runnable() {
             @Override
             public void run() {
-                diagnose(hvFinal);
+                diagnose();
             }
-        }, 1000);
+        }, 3500);
     }
 
-    // Signale à OnError ce qui empêcherait la grille d'être visible sous le header
-    private void diagnose(View hv) {
-        try {
-            if (scrollView == null || headerRoot != hv) return;
-            ViewGroup inner = (ViewGroup) scrollView.getChildAt(0);
-            int[] a = new int[2];
-            int[] b = new int[2];
-            hv.getLocationOnScreen(a);
-            scrollOuter.getLocationOnScreen(b);
-            int diff = Math.abs((a[1] - (int) hv.getTranslationY()) - (b[1] - (int) scrollOuter.getTranslationY()));
-            if (diff > dp(2)) {
-                OnError("[diag] le haut de la grille (" + b[1] + ") ne correspond pas au haut du header (" + a[1] + ").");
-            }
-            if (inner != null && inner.getChildCount() == 0) {
-                OnError("[diag] la grille est vide : appelle BuildProductGridFromJson avec cet arrangement scrollable et un JSON valide.");
-            }
-        } catch (Exception ignored) {
+    private void diagnose() {
+        if (headerHolder != null && headerHolder.getParent() == null) {
+            OnError("[diag] le header a été supprimé du conteneur : BuildProductGridFromJson vide encore tout le conteneur. Applique le patch ManaplaceUtils (grille dans son propre bloc).");
         }
     }
 
     private View buildLogoFrame() {
-        FrameLayout frame = new FrameLayout(context);
-        frame.setLayoutParams(new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, logoHeightPx));
-        frame.setBackgroundColor(DEFAULT_HEADER_COLOR);
+        logoFrame = new FrameLayout(context);
+        logoFrameParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, logoHeightPx + extraTop);
+        logoFrame.setLayoutParams(logoFrameParams);
+        logoFrame.setBackgroundColor(Color.WHITE);
 
         logoImage = new ImageView(context);
         logoImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        frame.addView(logoImage, new FrameLayout.LayoutParams(
+        logoFrame.addView(logoImage, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
 
-        scrimView = new View(context);
-        scrimView.setBackgroundColor(Color.TRANSPARENT);
-        frame.addView(scrimView, new FrameLayout.LayoutParams(
+        // Couche des textes : décalée de la hauteur de la barre de statut
+        contentLayer = new FrameLayout(context);
+        contentLayer.setPadding(0, extraTop, 0, 0);
+        logoFrame.addView(contentLayer, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
 
-        nameTv = text(shopNameValue, 35, Color.WHITE);
-        nameTv.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+        nameTv = text(shopNameValue, 35, onColor);
+        nameTv.setGravity(Gravity.CENTER);
         nameTv.setPadding(dp(26), 0, dp(26), 0);
         nameTv.setMaxLines(2);
         nameTv.setEllipsize(TextUtils.TruncateAt.END);
-        frame.addView(nameTv, new FrameLayout.LayoutParams(
+        contentLayer.addView(nameTv, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER_VERTICAL));
+                Gravity.CENTER));
 
-        categoryTv = text(shopCategoryValue, 15, Color.WHITE);
+        categoryTv = text(shopCategoryValue, 15, onColor);
         categoryTv.setGravity(Gravity.CENTER);
-        frame.addView(categoryTv, new FrameLayout.LayoutParams(
+        contentLayer.addView(categoryTv, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, dp(32), Gravity.TOP));
 
         FrameLayout menuBtn = new FrameLayout(context);
@@ -546,19 +525,28 @@ public class Manatest extends AndroidNonvisibleComponent {
                 OpenShopMenu();
             }
         });
-        menuBtn.addView(new HamburgerView(context), new FrameLayout.LayoutParams(
-                dp(21), dp(15), Gravity.CENTER));
-        frame.addView(menuBtn, new FrameLayout.LayoutParams(
+        hamburger = new HamburgerView(context);
+        hamburger.setColor(onColor);
+        menuBtn.addView(hamburger, new FrameLayout.LayoutParams(dp(21), dp(15), Gravity.CENTER));
+        contentLayer.addView(menuBtn, new FrameLayout.LayoutParams(
                 dp(40), dp(32), Gravity.TOP | Gravity.START));
 
-        return frame;
+        return logoFrame;
+    }
+
+    private void updateLogoExtra() {
+        if (logoFrame != null && logoFrameParams != null) {
+            logoFrameParams.height = logoHeightPx + extraTop;
+            logoFrame.setLayoutParams(logoFrameParams);
+        }
+        if (contentLayer != null) contentLayer.setPadding(0, extraTop, 0, 0);
     }
 
     // =========================================================================
     // LOGO DU VENDEUR
     // =========================================================================
 
-    @SimpleFunction(description = "Charge le logo du vendeur dans le header : lien http(s):// ou chemin de fichier (file://...). La barre de statut prend automatiquement la couleur du haut du logo.")
+    @SimpleFunction(description = "Charge le logo du vendeur dans le header : lien http(s)://, chemin de fichier (file://...) ou nom d'un fichier des Assets. Les couleurs du texte, de l'icône menu et de la barre de statut s'adaptent au logo (blanc sur logo sombre, sombre sur logo clair).")
     public void SetShopLogoSource(final String source) {
         if (source == null || source.trim().isEmpty()) {
             OnError("SetShopLogoSource: source vide.");
@@ -669,60 +657,164 @@ public class Manatest extends AndroidNonvisibleComponent {
         return s;
     }
 
-    // Couleur moyenne de la bande du haut de l'image, telle qu'elle est affichée (center-crop)
-    private int topColorOf(Bitmap bmp) {
+    // ---- analyse des couleurs (les zones transparentes comptent comme du blanc) ----
+
+    private int overWhite(int c) {
+        int a = Color.alpha(c);
+        return Color.rgb(
+                (Color.red(c) * a + 255 * (255 - a)) / 255,
+                (Color.green(c) * a + 255 * (255 - a)) / 255,
+                (Color.blue(c) * a + 255 * (255 - a)) / 255);
+    }
+
+    private int avgOverWhite(Bitmap src, int w, int h) {
+        Bitmap small = Bitmap.createScaledBitmap(src, w, h, true);
+        long r = 0;
+        long g = 0;
+        long b = 0;
+        int n = 0;
+        for (int x = 0; x < small.getWidth(); x++) {
+            for (int y = 0; y < small.getHeight(); y++) {
+                int c = overWhite(small.getPixel(x, y));
+                r += Color.red(c);
+                g += Color.green(c);
+                b += Color.blue(c);
+                n++;
+            }
+        }
+        if (small != src) small.recycle();
+        if (n == 0) return Color.WHITE;
+        return Color.rgb((int) (r / n), (int) (g / n), (int) (b / n));
+    }
+
+    // Bande du haut telle qu'elle est affichée (center-crop)
+    private int topStripColor(Bitmap bmp) {
         try {
             int bw = bmp.getWidth();
             int bh = bmp.getHeight();
+            int screenW = context.getResources().getDisplayMetrics().widthPixels;
             float scale = Math.max((float) screenW / bw, (float) logoHeightPx / bh);
             float visH = logoHeightPx / scale;
             int y = (int) Math.max(0f, (bh - visH) / 2f);
             int stripH = Math.max(1, (int) (visH * 0.06f));
             stripH = Math.min(stripH, bh - y);
             Bitmap strip = Bitmap.createBitmap(bmp, 0, y, bw, stripH);
-            Bitmap small = Bitmap.createScaledBitmap(strip, 8, 2, true);
-            long r = 0, g = 0, b = 0;
-            int count = 0;
-            for (int i = 0; i < small.getWidth(); i++) {
-                for (int j = 0; j < small.getHeight(); j++) {
-                    int c = small.getPixel(i, j);
-                    r += Color.red(c);
-                    g += Color.green(c);
-                    b += Color.blue(c);
-                    count++;
-                }
-            }
-            if (small != strip) small.recycle();
+            int c = avgOverWhite(strip, 8, 2);
             if (strip != bmp) strip.recycle();
-            if (count == 0) return DEFAULT_HEADER_COLOR;
-            return Color.rgb((int) (r / count), (int) (g / count), (int) (b / count));
+            return c;
         } catch (Exception e) {
-            return DEFAULT_HEADER_COLOR;
+            return Color.WHITE;
         }
     }
 
     private void applyLogoToView() {
         if (logoImage == null) return;
         if (logoBitmap == null) {
-            headerColor = DEFAULT_HEADER_COLOR;
-            if (scrimView != null) scrimView.setBackgroundColor(Color.TRANSPARENT);
-            return;
+            topColor = Color.WHITE;
+            topLum = 1.0;
+            contentLum = 1.0;
+        } else {
+            logoImage.setImageBitmap(logoBitmap);
+            contentLum = luminance(avgOverWhite(logoBitmap, 16, 16));
+            topColor = topStripColor(logoBitmap);
+            topLum = luminance(topColor);
         }
-        logoImage.setImageBitmap(logoBitmap);
-        int avg = topColorOf(logoBitmap);
-        // Logo très clair : léger voile sombre pour garder le texte blanc lisible
-        int scrim = luminance(avg) > 0.6 ? 0x59 : 0;
-        if (scrimView != null) scrimView.setBackgroundColor(Color.argb(scrim, 0, 0, 0));
-        int k = 255 - scrim;
-        headerColor = Color.rgb(
-                Color.red(avg) * k / 255,
-                Color.green(avg) * k / 255,
-                Color.blue(avg) * k / 255);
+        // Texte blanc sur logo sombre, texte sombre sur logo clair ou blanc
+        onColor = contentLum > 0.6 ? ink(0xFF) : Color.WHITE;
+        if (nameTv != null) nameTv.setTextColor(onColor);
+        if (categoryTv != null) categoryTv.setTextColor(onColor);
+        if (hamburger != null) hamburger.setColor(onColor);
     }
 
     // =========================================================================
-    // DÉFILEMENT COMMUN ET BARRE DE STATUT DYNAMIQUE
+    // BARRE DE STATUT TRANSPARENTE
     // =========================================================================
+
+    private void saveSystemBars() {
+        if (barsSaved) return;
+        try {
+            Window w = activity.getWindow();
+            origStatusColor = w.getStatusBarColor();
+            origSysUiFlags = w.getDecorView().getSystemUiVisibility();
+            origDecorBg = w.getDecorView().getBackground();
+            barsSaved = true;
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void applySystemBars() {
+        try {
+            Window w = activity.getWindow();
+            w.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+            w.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
+            w.setStatusBarColor(Color.TRANSPARENT);
+            View d = w.getDecorView();
+            int f = d.getSystemUiVisibility();
+            int nf = f | View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULL_SCREEN;
+            if (nf != f) d.setSystemUiVisibility(nf);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void setStatusIcons(boolean dark) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return;
+        try {
+            View d = activity.getWindow().getDecorView();
+            int f = d.getSystemUiVisibility();
+            int nf = dark ? (f | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR)
+                    : (f & ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+            if (nf != f) d.setSystemUiVisibility(nf);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private FrameLayout contentRoot() {
+        View v = activity.findViewById(android.R.id.content);
+        return v instanceof FrameLayout ? (FrameLayout) v : null;
+    }
+
+    private void ensureScrim() {
+        if (statusScrim != null || statusBarH <= 0) return;
+        FrameLayout root = contentRoot();
+        if (root == null) return;
+        statusScrim = new View(context);
+        statusScrim.setBackgroundColor(Color.WHITE);
+        statusScrim.setAlpha(0f);
+        statusScrim.setElevation((float) dp(2));
+        root.addView(statusScrim, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, statusBarH, Gravity.TOP));
+    }
+
+    private void removeScrim() {
+        if (statusScrim == null) return;
+        ViewGroup p = (ViewGroup) statusScrim.getParent();
+        if (p != null) p.removeView(statusScrim);
+        statusScrim = null;
+    }
+
+    // Le contenu démarre-t-il sous la barre (transparente) ou en dessous d'elle ?
+    private void detectEdge() {
+        if (scrollView == null || headerHolder == null) return;
+        int[] loc = new int[2];
+        scrollView.getLocationOnScreen(loc);
+        int top = loc[1];
+        boolean newEdge;
+        int newExtra;
+        if (top < statusBarH - dp(2)) {
+            newEdge = true;
+            newExtra = Math.max(0, statusBarH - top);
+        } else {
+            newEdge = false;
+            newExtra = 0;
+        }
+        if (newEdge != edgeMode || newExtra != extraTop) {
+            edgeMode = newEdge;
+            extraTop = newExtra;
+            updateLogoExtra();
+            if (edgeMode) ensureScrim(); else removeScrim();
+        }
+        applyScroll();
+    }
 
     private void attachScrollListener() {
         if (scrollView == null) return;
@@ -746,81 +838,50 @@ public class Manatest extends AndroidNonvisibleComponent {
         scrollListener = null;
     }
 
+    // Quand le logo quitte le haut de l'écran, la zone de la barre passe au blanc de la page
     private void applyScroll() {
-        if (scrollView == null || headerRoot == null) return;
+        if (scrollView == null) return;
         int y = scrollView.getScrollY();
-        int t = Math.min(Math.max(y, 0), headerTotalPx);
-        headerRoot.setTranslationY(-(float) t);
+        float range = Math.max(2f * statusBarH, (float) dp(48));
+        float p = clamp01((y - (logoHeightPx - range / 2f)) / range);
 
-        float p = logoHeightPx > 0 ? clamp01((float) y / (float) logoHeightPx) : 1f;
-        int color = (Integer) new ArgbEvaluator().evaluate(p, headerColor, PAGE_COLOR);
-        setStatusBar(color);
-    }
-
-    private void saveStatusBar() {
-        if (statusSaved) return;
-        try {
-            Window w = activity.getWindow();
-            origStatusColor = w.getStatusBarColor();
-            origSysUiFlags = w.getDecorView().getSystemUiVisibility();
-            statusSaved = true;
-        } catch (Exception ignored) {
-        }
-    }
-
-    private void setStatusBar(int color) {
-        try {
-            Window w = activity.getWindow();
-            w.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-            w.setStatusBarColor(color);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                View d = w.getDecorView();
-                int f = d.getSystemUiVisibility();
-                int nf = luminance(color) > 0.55
-                        ? (f | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR)
-                        : (f & ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
-                if (nf != f) d.setSystemUiVisibility(nf);
+        if (edgeMode) {
+            if (statusScrim != null) statusScrim.setAlpha(p);
+        } else {
+            // Le contenu est sous la barre : le fond de la fenêtre prend la couleur du logo
+            try {
+                activity.getWindow().getDecorView().setBackgroundColor(blend(topColor, Color.WHITE, p));
+            } catch (Exception ignored) {
             }
-        } catch (Exception ignored) {
         }
+        double bgLum = topLum * (1f - p) + p;
+        setStatusIcons(bgLum > 0.6);
     }
 
-    @SimpleFunction(description = "À appeler en quittant la page boutique : arrête le défilement commun, ferme le menu et remet la barre de statut d'origine.")
+    @SimpleFunction(description = "À appeler en quittant la page boutique : retire le header, ferme le menu et remet la barre de statut d'origine.")
     public void ReleaseShopHome() {
         runOnUi(new Runnable() {
             @Override
             public void run() {
                 detachScrollListener();
-                if (headerRoot != null) headerRoot.setTranslationY(0f);
-                if (adjustedInner != null) {
-                    adjustedInner.setPadding(adjustedInner.getPaddingLeft(), origInnerPadTop,
-                            adjustedInner.getPaddingRight(), adjustedInner.getPaddingBottom());
-                    adjustedInner = null;
+                destroyMenu();
+                removeScrim();
+                if (headerHolder != null && headerHolder.getParent() instanceof ViewGroup) {
+                    ((ViewGroup) headerHolder.getParent()).removeView(headerHolder);
                 }
-                if (adjustedScrollView != null) {
-                    ViewGroup.LayoutParams lp = adjustedScrollView.getLayoutParams();
-                    if (lp instanceof ViewGroup.MarginLayoutParams) {
-                        ((ViewGroup.MarginLayoutParams) lp).topMargin = 0;
-                        if (origScrollHeight > 0) lp.height = origScrollHeight;
-                        adjustedScrollView.setLayoutParams(lp);
-                    }
-                    adjustedScrollView = null;
-                }
-                if (menuOverlay != null) {
-                    ViewParent p = menuOverlay.getParent();
-                    if (p instanceof ViewGroup) ((ViewGroup) p).removeView(menuOverlay);
-                    menuOverlay = null;
-                    menuPanel = null;
-                    menuOpen = false;
-                }
-                if (statusSaved) {
+                headerHolder = null;
+                if (barsSaved) {
                     try {
                         Window w = activity.getWindow();
                         w.setStatusBarColor(origStatusColor);
                         w.getDecorView().setSystemUiVisibility(origSysUiFlags);
+                        w.getDecorView().setBackground(origDecorBg);
                     } catch (Exception ignored) {
                     }
+                    barsSaved = false;
                 }
+                edgeMode = false;
+                extraTop = 0;
             }
         });
     }
@@ -903,7 +964,7 @@ public class Manatest extends AndroidNonvisibleComponent {
 
     private void ensureMenu() {
         if (menuOverlay != null) return;
-        FrameLayout root = (FrameLayout) activity.findViewById(android.R.id.content);
+        FrameLayout root = contentRoot();
         if (root == null) {
             OnError("Menu: racine de l'écran introuvable.");
             return;
@@ -913,7 +974,7 @@ public class Manatest extends AndroidNonvisibleComponent {
 
         menuOverlay = new FrameLayout(context);
         menuOverlay.setVisibility(View.GONE);
-        menuOverlay.setElevation((float) dp(1));
+        menuOverlay.setElevation((float) dp(3));
 
         View catcher = new View(context);
         catcher.setClickable(true);
@@ -943,21 +1004,29 @@ public class Manatest extends AndroidNonvisibleComponent {
                 dp(20), dp(20), Gravity.CENTER));
         panel.addView(closeBox, new LinearLayout.LayoutParams(dp(38), dp(48)));
 
-        TextView item1 = menuItem("Mes infos", new Runnable() {
+        boolean first = true;
+        // « Édit » : seulement pour le vendeur propriétaire
+        if (ownerFlag) {
+            TextView edit = menuItem("Édit", new Runnable() {
+                @Override
+                public void run() {
+                    OnEditShopClick(shopUidValue);
+                }
+            });
+            ((LinearLayout.LayoutParams) edit.getLayoutParams()).topMargin = dp(6);
+            panel.addView(edit);
+            first = false;
+        }
+
+        // « Contact » : pour tout le monde
+        TextView contact = menuItem("Contact", new Runnable() {
             @Override
             public void run() {
-                OnUpdateInfosClick();
+                OnShopContactClick(shopUidValue);
             }
         });
-        ((LinearLayout.LayoutParams) item1.getLayoutParams()).topMargin = dp(6);
-        panel.addView(item1);
-
-        panel.addView(menuItem("Détails", new Runnable() {
-            @Override
-            public void run() {
-                OnShopDetailsClick();
-            }
-        }));
+        if (first) ((LinearLayout.LayoutParams) contact.getLayoutParams()).topMargin = dp(6);
+        panel.addView(contact);
 
         menuPanel = panel;
         menuOverlay.addView(panel, new FrameLayout.LayoutParams(
@@ -966,7 +1035,17 @@ public class Manatest extends AndroidNonvisibleComponent {
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
     }
 
-    @SimpleFunction(description = "Ouvre le menu latéral (Mes infos / Détails). Appelé aussi au toucher du menu hamburger.")
+    private void destroyMenu() {
+        if (menuOverlay != null) {
+            ViewGroup p = (ViewGroup) menuOverlay.getParent();
+            if (p != null) p.removeView(menuOverlay);
+        }
+        menuOverlay = null;
+        menuPanel = null;
+        menuOpen = false;
+    }
+
+    @SimpleFunction(description = "Ouvre le menu latéral (Édit pour le vendeur, Contact pour tout le monde). Appelé aussi au toucher du menu hamburger.")
     public void OpenShopMenu() {
         runOnUi(new Runnable() {
             @Override
@@ -975,19 +1054,9 @@ public class Manatest extends AndroidNonvisibleComponent {
                     ensureMenu();
                     if (menuOverlay == null || menuOpen) return;
 
-                    // Le menu démarre à la hauteur du haut de la page (sous la barre de statut)
-                    FrameLayout root = (FrameLayout) activity.findViewById(android.R.id.content);
-                    int top = 0;
-                    if (headerRoot != null && root != null) {
-                        int[] hl = new int[2];
-                        int[] rl = new int[2];
-                        headerRoot.getLocationOnScreen(hl);
-                        root.getLocationOnScreen(rl);
-                        top = hl[1] - (int) headerRoot.getTranslationY() - rl[1];
-                        if (top < 0) top = 0;
-                    }
+                    // Barre de statut transparente : le menu démarre juste sous les icônes
                     FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) menuOverlay.getLayoutParams();
-                    lp.topMargin = top;
+                    lp.topMargin = edgeMode ? statusBarH : 0;
                     menuOverlay.setLayoutParams(lp);
 
                     menuOpen = true;
