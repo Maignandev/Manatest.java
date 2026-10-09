@@ -1,48 +1,31 @@
 package com.manatest.utils;
 
+import android.animation.ArgbEvaluator;
 import android.app.Activity;
 import android.content.Context;
-import android.content.Intent;
-import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.Matrix;
-import android.graphics.Outline;
 import android.graphics.Paint;
-import android.graphics.Path;
-import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.media.ExifInterface;
-import android.net.Uri;
 import android.os.Build;
-import android.os.Handler;
-import android.os.Looper;
-import android.text.Editable;
-import android.text.InputFilter;
-import android.text.InputType;
-import android.text.TextUtils;
-import android.text.TextWatcher;
+import android.util.DisplayMetrics;
 import android.util.TypedValue;
+import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.ViewOutlineProvider;
+import android.view.ViewParent;
+import android.view.ViewTreeObserver;
+import android.view.Window;
+import android.view.WindowManager;
 import android.view.animation.DecelerateInterpolator;
-import android.view.inputmethod.EditorInfo;
-import android.view.inputmethod.InputMethodManager;
-import android.widget.AbsListView;
-import android.widget.AdapterView;
-import android.widget.BaseAdapter;
-import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.ListPopupWindow;
-import android.widget.PopupWindow;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
@@ -52,117 +35,85 @@ import com.google.appinventor.components.annotations.SimpleFunction;
 import com.google.appinventor.components.annotations.SimpleObject;
 import com.google.appinventor.components.annotations.UsesPermissions;
 import com.google.appinventor.components.common.ComponentCategory;
-import com.google.appinventor.components.runtime.ActivityResultListener;
 import com.google.appinventor.components.runtime.AndroidNonvisibleComponent;
 import com.google.appinventor.components.runtime.AndroidViewComponent;
 import com.google.appinventor.components.runtime.ComponentContainer;
 import com.google.appinventor.components.runtime.EventDispatcher;
-import com.google.appinventor.components.runtime.Form;
-import com.google.appinventor.components.runtime.PermissionResultHandler;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
-import java.io.DataOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.net.URLEncoder;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 
 @DesignerComponent(
-        version = 9,
-        description = "Manatest - Formulaire « Créer ma boutique » construit en code : champs à libellé animé, vérification instantanée du nom, spinner de catégories, clavier numérique pour le téléphone, logo, envoi au serveur et statut vendeur permanent.",
+        version = 10,
+        description = "Manatest - Page d'accueil boutique : header avec le logo du vendeur, bouton Ajouter un produit, compteur d'articles, menu hamburger et barre de statut dynamique. Le header (arrangement non scrollable) défile avec la grille (arrangement scrollable).",
         category = ComponentCategory.EXTENSION,
         nonVisible = true
 )
 @SimpleObject(external = true)
-@UsesPermissions(
-        permissionNames =
-                "android.permission.INTERNET," +
-                "android.permission.READ_EXTERNAL_STORAGE," +
-                "android.permission.READ_MEDIA_IMAGES"
-)
-public class Manatest extends AndroidNonvisibleComponent implements ActivityResultListener {
+@UsesPermissions(permissionNames = "android.permission.INTERNET")
+public class Manatest extends AndroidNonvisibleComponent {
 
-    // Préférences partagées avec ManaplaceUtils (même nom de fichier, mêmes clés)
-    private static final String PREFS_NAME = "ManaplaceShop";
-    private static final String PREF_CURRENT_UID = "current_uid";
-    private static final String PREF_SELLER_PREFIX = "is_seller_";
-
-    private static final int MAX_NAME = 50;
-    private static final int MAX_PHONE = 20;
-    private static final int MAX_ADDRESS = 120;
-    private static final int FIELD_HEIGHT_DP = 64;
-    private static final long NAME_DEBOUNCE_MS = 450L;
-    private static final int LOGO_MAX_WIDTH = 800;
-    private static final int LOGO_QUALITY = 85;
-
-    private static final int COLOR_FOCUS = Color.parseColor("#0055D4");
-    private static final int COLOR_ERROR = Color.parseColor("#E53935");
-    private static final int COLOR_OK = Color.parseColor("#2E7D32");
+    private static final int PAGE_COLOR = Color.WHITE;
+    private static final int DEFAULT_HEADER_COLOR = Color.parseColor("#1A1A1B");
 
     private final Context context;
     private final Activity activity;
-    private final Form form;
-    private final Handler handler = new Handler(Looper.getMainLooper());
-    private final int pickRequestCode;
 
-    // Valeurs saisies (séparées de l'affichage : elles survivent à un nouveau rendu)
-    private String shopName = "";
-    private String shopCategory = "";
-    private String shopPhone = "";
-    private String shopAddress = "";
-    private String logoPath = "";
-    private final List<String> categories = new ArrayList<String>();
-
-    private ViewGroup formContainer;
     private Typeface customFont;
-    private Typeface customBoldFont;
-    private boolean restoring = false;
+
+    // Données
+    private String shopNameValue = "";
+    private String shopCategoryValue = "";
+    private int articleCount = 0;
+    private Bitmap logoBitmap;
+    private int headerColor = DEFAULT_HEADER_COLOR;
+
+    // Dimensions (en pixels)
+    private int screenW;
+    private int screenH;
+    private int logoHeightPx;
+    private int headerTotalPx;
 
     // Vues
-    private FieldView nameField;
-    private FieldView phoneField;
-    private FieldView addressField;
-    private FieldView catField;
-    private TextView catValue;
-    private TextView catError;
-    private TextView nameStatus;
+    private View headerRoot;
+    private View scrollOuter;
+    private ScrollView scrollView;
     private ImageView logoImage;
-    private View logoGlyph;
+    private View scrimView;
+    private TextView nameTv;
+    private TextView categoryTv;
+    private TextView countTv;
+    private ViewTreeObserver.OnScrollChangedListener scrollListener;
 
-    // Vérification du nom
-    private String nameCheckUrl = "";
-    private String nameCheckAuth = "";
-    private int nameSeq = 0;
-    private boolean nameChecking = false;
-    private int nameState = 0; // 0 inconnu, 1 disponible, 2 déjà utilisé, 3 erreur réseau
-    private boolean nameRequiredShown = false;
-    private Runnable nameRunnable;
+    // Ajustement du conteneur scrollable (fait une seule fois par vue)
+    private View adjustedScrollView;
+    private int origScrollHeight;
 
-    // Envoi et statut vendeur
-    private boolean submitting = false;
-    private volatile boolean sellerListening = false;
-    private Thread sellerThread;
+    // Barre de statut d'origine
+    private boolean statusSaved = false;
+    private int origStatusColor;
+    private int origSysUiFlags;
+
+    // Menu
+    private FrameLayout menuOverlay;
+    private View menuPanel;
+    private int menuPanelWidth;
+    private boolean menuOpen = false;
 
     public Manatest(ComponentContainer container) {
         super(container.$form());
-        this.form = container.$form();
         this.context = container.$context();
         this.activity = (Activity) container.$context();
-        this.pickRequestCode = form.registerForActivityResult(this);
     }
 
     // =========================================================================
-    // OUTILS INTERNES
+    // OUTILS
     // =========================================================================
 
     private int dp(int v) {
@@ -170,15 +121,9 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
                 TypedValue.COMPLEX_UNIT_DIP, v, context.getResources().getDisplayMetrics());
     }
 
-    // #1A1A1B avec un alpha donné
     private int ink(int alpha) {
         return Color.argb(alpha, 0x1A, 0x1A, 0x1B);
     }
-
-    private int cTitle() { return ink(0xC0); }   // grand titre et sous-descriptions
-    private int cText() { return ink(0xE9); }    // texte saisi / sélectionné
-    private int cHint() { return ink(0x91); }    // libellé (hint)
-    private int cStroke() { return ink(0x86); }  // contour au repos
 
     private void runOnUi(Runnable r) {
         activity.runOnUiThread(r);
@@ -193,8 +138,13 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         });
     }
 
-    private SharedPreferences prefs() {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+    private TextView text(String s, int sp, int color) {
+        TextView t = new TextView(context);
+        t.setText(s);
+        t.setTextSize(sp);
+        t.setTextColor(color);
+        if (customFont != null) t.setTypeface(customFont);
+        return t;
     }
 
     private ViewGroup realLayout(AndroidViewComponent component) {
@@ -221,1441 +171,753 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         return v instanceof ViewGroup ? (ViewGroup) v : null;
     }
 
-    private Typeface loadFontNamed(String fontPath, String who) {
-        if (fontPath == null || fontPath.trim().isEmpty()) return null;
-        try {
-            if (fontPath.startsWith("/")) {
-                return Typeface.createFromFile(new File(fontPath));
-            }
-            return Typeface.createFromAsset(context.getAssets(), fontPath);
-        } catch (Exception e) {
-            OnError(who + ": police introuvable (" + fontPath + ").");
-            return null;
+    private ScrollView findScrollView(View v, int depth) {
+        if (v instanceof ScrollView) return (ScrollView) v;
+        if (depth > 3 || !(v instanceof ViewGroup)) return null;
+        ViewGroup g = (ViewGroup) v;
+        for (int i = 0; i < g.getChildCount(); i++) {
+            ScrollView s = findScrollView(g.getChildAt(i), depth + 1);
+            if (s != null) return s;
         }
+        return null;
     }
 
-    private TextView text(String s, int sp, int color, boolean bold) {
-        TextView t = new TextView(context);
-        t.setText(s);
-        t.setTextSize(sp);
-        t.setTextColor(color);
-        if (bold) {
-            if (customBoldFont != null) {
-                t.setTypeface(customBoldFont);
-            } else if (customFont != null) {
-                t.setTypeface(Typeface.create(customFont, Typeface.BOLD));
-            } else {
-                t.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-            }
-        } else if (customFont != null) {
-            t.setTypeface(customFont);
-        }
-        return t;
+    private double luminance(int c) {
+        return (0.299 * Color.red(c) + 0.587 * Color.green(c) + 0.114 * Color.blue(c)) / 255.0;
     }
 
-    private void hideKeyboard() {
-        try {
-            View v = activity.getCurrentFocus();
-            if (v == null) v = formContainer;
-            InputMethodManager imm =
-                    (InputMethodManager) context.getSystemService(Context.INPUT_METHOD_SERVICE);
-            if (imm != null && v != null) {
-                imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
-            }
-        } catch (Exception ignored) {
-        }
-    }
-
-    private String stripFile(String p) {
-        return (p != null && p.startsWith("file://")) ? p.substring(7) : p;
-    }
-
-    private String readAll(InputStream is) throws Exception {
-        if (is == null) return "";
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        byte[] buf = new byte[4096];
-        int n;
-        while ((n = is.read(buf)) > 0) {
-            bos.write(buf, 0, n);
-        }
-        is.close();
-        return bos.toString("UTF-8");
-    }
-
-    private String[] httpGet(String target, String auth) throws Exception {
-        HttpURLConnection c = null;
-        try {
-            c = (HttpURLConnection) new URL(target).openConnection();
-            c.setRequestMethod("GET");
-            c.setConnectTimeout(10000);
-            c.setReadTimeout(10000);
-            c.setRequestProperty("Accept", "application/json");
-            if (auth != null && !auth.isEmpty()) {
-                c.setRequestProperty("Authorization", auth);
-            }
-            int code = c.getResponseCode();
-            InputStream is = code >= 400 ? c.getErrorStream() : c.getInputStream();
-            return new String[]{String.valueOf(code), readAll(is)};
-        } finally {
-            if (c != null) c.disconnect();
-        }
+    private float clamp01(float v) {
+        return v < 0f ? 0f : (v > 1f ? 1f : v);
     }
 
     // =========================================================================
     // ÉVÉNEMENTS
     // =========================================================================
 
-    @SimpleEvent(description = "Une catégorie vient d'être choisie dans le spinner. category : le nom choisi.")
-    public void AfterCategorySelected(String category) {
-        EventDispatcher.dispatchEvent(this, "AfterCategorySelected", category);
+    @SimpleEvent(description = "L'utilisateur a touché le bouton « Ajouter un produit ».")
+    public void OnAddProductClick() {
+        EventDispatcher.dispatchEvent(this, "OnAddProductClick");
     }
 
-    @SimpleEvent(description = "Le serveur a répondu à la vérification du nom. available : vrai si le nom est libre, faux s'il est déjà utilisé.")
-    public void OnShopNameChecked(String name, boolean available) {
-        EventDispatcher.dispatchEvent(this, "OnShopNameChecked", name, available);
+    @SimpleEvent(description = "L'utilisateur a touché « Mettre à jour les infos » dans le menu. Ouvre ici la page correspondante.")
+    public void OnUpdateInfosClick() {
+        EventDispatcher.dispatchEvent(this, "OnUpdateInfosClick");
     }
 
-    @SimpleEvent(description = "Le formulaire est invalide. fieldKey : name ou category. message : le texte de l'erreur (aussi affiché en rouge à l'écran).")
-    public void OnShopFormInvalid(String fieldKey, String message) {
-        EventDispatcher.dispatchEvent(this, "OnShopFormInvalid", fieldKey, message);
+    @SimpleEvent(description = "L'utilisateur a touché « Détails de la boutique » dans le menu. Ouvre ici la page correspondante.")
+    public void OnShopDetailsClick() {
+        EventDispatcher.dispatchEvent(this, "OnShopDetailsClick");
     }
 
-    @SimpleEvent(description = "Le logo a été choisi et compressé. logoPath : lien file:// de l'image.")
-    public void OnShopLogoPicked(String logoPath) {
-        EventDispatcher.dispatchEvent(this, "OnShopLogoPicked", logoPath);
+    @SimpleEvent(description = "Le logo du header est chargé et affiché.")
+    public void OnShopLogoLoaded() {
+        EventDispatcher.dispatchEvent(this, "OnShopLogoLoaded");
     }
 
-    @SimpleEvent(description = "Le serveur a accepté la création de la boutique (l'utilisateur est maintenant vendeur). responseCode : code HTTP, response : texte renvoyé.")
-    public void OnShopCreated(int responseCode, String response) {
-        EventDispatcher.dispatchEvent(this, "OnShopCreated", responseCode, response);
-    }
-
-    @SimpleEvent(description = "Le serveur a refusé la création de la boutique (ou erreur serveur). Le code 409 signale un nom déjà pris.")
-    public void OnShopCreateFailed(int responseCode, String response) {
-        EventDispatcher.dispatchEvent(this, "OnShopCreateFailed", responseCode, response);
-    }
-
-    @SimpleEvent(description = "Le serveur a répondu sur le statut vendeur. isSeller : vrai si l'utilisateur a déjà une boutique.")
-    public void OnSellerStatusChecked(boolean isSeller) {
-        EventDispatcher.dispatchEvent(this, "OnSellerStatusChecked", isSeller);
-    }
-
-    @SimpleEvent(description = "Le statut vendeur vient de changer (faux vers vrai à la création ou à la reconnexion). À utiliser pour masquer la page de création et l'onglet de la barre de navigation.")
-    public void OnSellerStatusChanged(boolean isSeller) {
-        EventDispatcher.dispatchEvent(this, "OnSellerStatusChanged", isSeller);
-    }
-
-    @SimpleEvent(description = "Une erreur s'est produite (code, réseau, permission, serveur).")
+    @SimpleEvent(description = "Une erreur s'est produite (construction, logo, JSON).")
     public void OnError(String message) {
         EventDispatcher.dispatchEvent(this, "OnError", message);
     }
 
     // =========================================================================
-    // CONSTRUCTION DU FORMULAIRE
+    // CONFIGURATION
     // =========================================================================
 
-    @SimpleFunction(description = "Construit le formulaire « Créer ma boutique » dans l'arrangement donné (utilise un arrangement vertical dédié : son contenu est remplacé). Si l'utilisateur est déjà vendeur, rien n'est affiché et OnSellerStatusChecked(vrai) est déclenché.")
-    public void BuildShopForm(final AndroidViewComponent container) {
-        if (container == null || container.getView() == null) {
-            OnError("BuildShopForm: conteneur invalide.");
+    @SimpleFunction(description = "Charge la police du texte (ex: Manrope-Medium.ttf dans les Assets). À appeler avant BuildShopHome.")
+    public void LoadCustomFont(String fontPath) {
+        if (fontPath == null || fontPath.trim().isEmpty()) {
+            customFont = null;
             return;
         }
-        runOnUi(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    ViewGroup target = realLayout(container);
-                    if (target == null) {
-                        OnError("BuildShopForm: conteneur invalide.");
-                        return;
-                    }
-                    formContainer = target;
-                    if (IsSeller()) {
-                        OnSellerStatusChecked(true);
-                        return;
-                    }
-                    render();
-                } catch (Exception e) {
-                    OnError("BuildShopForm: " + e.getMessage());
-                }
-            }
-        });
-    }
-
-    @SimpleFunction(description = "Charge la police du texte du formulaire (ex: Manrope-Medium.ttf placé dans les Assets). Vide = police par défaut.")
-    public void LoadCustomFont(String fontPath) {
-        customFont = loadFontNamed(fontPath, "LoadCustomFont");
-        if (formContainer != null) render();
-    }
-
-    @SimpleFunction(description = "Charge (facultatif) la police en gras du formulaire.")
-    public void LoadCustomBoldFont(String fontPath) {
-        customBoldFont = loadFontNamed(fontPath, "LoadCustomBoldFont");
-        if (formContainer != null) render();
-    }
-
-    @SimpleFunction(description = "Définit la liste des catégories du spinner : un tableau JSON (« [\"Mode\",\"Beauté\"] » ou objets avec name / title) ou des noms séparés par des virgules.")
-    public void SetShopCategories(String categoriesList) {
-        categories.clear();
-        if (categoriesList == null || categoriesList.trim().isEmpty()) return;
-        String t = categoriesList.trim();
         try {
-            if (t.startsWith("[")) {
-                JSONArray a = new JSONArray(t);
-                for (int i = 0; i < a.length(); i++) {
-                    Object o = a.get(i);
-                    String s;
-                    if (o instanceof JSONObject) {
-                        JSONObject jo = (JSONObject) o;
-                        s = jo.optString("name", jo.optString("title", jo.optString("label", "")));
-                    } else {
-                        s = String.valueOf(o);
-                    }
-                    s = s == null ? "" : s.trim();
-                    if (!s.isEmpty()) categories.add(s);
-                }
+            if (fontPath.startsWith("/")) {
+                customFont = Typeface.createFromFile(new File(fontPath));
             } else {
-                String[] parts = t.split(",");
-                for (int i = 0; i < parts.length; i++) {
-                    String s = parts[i].trim();
-                    if (!s.isEmpty()) categories.add(s);
-                }
+                customFont = Typeface.createFromAsset(context.getAssets(), fontPath);
             }
         } catch (Exception e) {
-            OnError("SetShopCategories: " + e.getMessage());
+            OnError("LoadCustomFont: police introuvable (" + fontPath + ").");
         }
     }
 
-    @SimpleFunction(description = "Définit l'adresse du serveur qui vérifie le nom en direct. La requête GET est envoyée à chaque pause de frappe avec ?name=... (ou à la place de {name} dans l'adresse). Réponse attendue en JSON : {\"available\": true} ou {\"exists\": true}. authorization : en-tête Authorization (vide si inutile).")
-    public void SetShopNameCheckUrl(String url, String authorization) {
-        nameCheckUrl = url == null ? "" : url.trim();
-        nameCheckAuth = authorization == null ? "" : authorization.trim();
-        scheduleNameCheck();
+    @SimpleFunction(description = "Définit le nom de la boutique (grand texte blanc du header) et sa catégorie (texte blanc centré en haut).")
+    public void SetShopHeader(final String name, final String category) {
+        shopNameValue = name == null ? "" : name.trim();
+        shopCategoryValue = category == null ? "" : category.trim();
+        runOnUi(new Runnable() {
+            @Override
+            public void run() {
+                if (nameTv != null) nameTv.setText(shopNameValue);
+                if (categoryTv != null) categoryTv.setText(shopCategoryValue);
+            }
+        });
     }
 
-    private void render() {
+    // =========================================================================
+    // CONSTRUCTION DE LA PAGE
+    // =========================================================================
+
+    private class HamburgerView extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        HamburgerView(Context c) {
+            super(c);
+            paint.setColor(Color.WHITE);
+            paint.setStrokeWidth((float) dp(3));
+            paint.setStrokeCap(Paint.Cap.ROUND);
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            float w = getWidth();
+            float h = getHeight();
+            float s = paint.getStrokeWidth() / 2f;
+            canvas.drawLine(s, s, w - s, s, paint);
+            canvas.drawLine(s, h / 2f, w - s, h / 2f, paint);
+            canvas.drawLine(s, h - s, w - s, h - s, paint);
+        }
+    }
+
+    private class CloseView extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        CloseView(Context c) {
+            super(c);
+            paint.setColor(ink(0xFF));
+            paint.setStrokeWidth((float) dp(3));
+            paint.setStrokeCap(Paint.Cap.ROUND);
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            float w = getWidth();
+            float h = getHeight();
+            float s = paint.getStrokeWidth() / 2f;
+            canvas.drawLine(s, s, w - s, h - s, paint);
+            canvas.drawLine(w - s, s, s, h - s, paint);
+        }
+    }
+
+    @SimpleFunction(description = "Construit la page boutique. headerContainer : arrangement NON scrollable, vide, placé juste au-dessus de scrollContainer dans le même arrangement vertical. scrollContainer : arrangement scrollable où ManaplaceUtils construit la grille (BuildProductGridFromJson). Le header et la grille défilent ensemble. Le contenu de headerContainer est remplacé.")
+    public void BuildShopHome(final AndroidViewComponent headerContainer,
+                              final AndroidViewComponent scrollContainer) {
+        if (headerContainer == null || headerContainer.getView() == null
+                || scrollContainer == null || scrollContainer.getView() == null) {
+            OnError("BuildShopHome: conteneur invalide.");
+            return;
+        }
         runOnUi(new Runnable() {
             @Override
             public void run() {
                 try {
-                    if (formContainer == null) return;
-                    formContainer.removeAllViews();
-                    addTitle();
-                    addNameSection();
-                    addSeparator();
-                    addCategorySection();
-                    addSeparator();
-                    addPhoneSection();
-                    addSeparator();
-                    addAddressSection();
-                    addLogoSection();
+                    buildShopHomeInternal(headerContainer, scrollContainer);
                 } catch (Exception e) {
-                    OnError("render: " + e.getMessage());
+                    OnError("BuildShopHome: " + e.getMessage());
                 }
             }
         });
     }
 
-    // ---- éléments de base ----
+    private void buildShopHomeInternal(AndroidViewComponent headerContainer,
+                                       AndroidViewComponent scrollContainer) {
+        View hv = headerContainer.getView();
+        View sv = scrollContainer.getView();
+        ViewGroup content = realLayout(headerContainer);
+        ScrollView sc = findScrollView(sv, 0);
 
-    private LinearLayout section() {
-        LinearLayout s = new LinearLayout(context);
-        s.setOrientation(LinearLayout.VERTICAL);
-        s.setLayoutParams(new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
-        s.setPadding(dp(20), dp(16), dp(20), dp(16));
-        return s;
-    }
-
-    private TextView desc(String s) {
-        TextView t = text(s, 12, cTitle(), false);
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT);
-        p.topMargin = dp(12);
-        p.leftMargin = dp(2);
-        t.setLayoutParams(p);
-        return t;
-    }
-
-    private void addSeparator() {
-        View v = new View(context);
-        v.setBackgroundColor(Color.parseColor("#F5F5F5"));
-        v.setLayoutParams(new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(14)));
-        formContainer.addView(v);
-    }
-
-    private void addTitle() {
-        TextView t = text("Configure ta boutique pour commencer à vendre", 25, cTitle(), false);
-        t.setGravity(Gravity.CENTER);
-        t.setLayoutParams(new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
-        t.setPadding(dp(20), dp(20), dp(20), dp(12));
-        formContainer.addView(t);
-    }
-
-    // ---- champ à libellé animé (nom, téléphone, adresse, spinner) ----
-
-    private class FieldView {
-        final FrameLayout box;
-        final TextView label;
-        final GradientDrawable bg;
-        EditText edit;
-        boolean floated = false;
-        boolean focused = false;
-        boolean error = false;
-
-        FieldView(String hint) {
-            box = new FrameLayout(context);
-            box.setLayoutParams(new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, dp(FIELD_HEIGHT_DP)));
-            bg = new GradientDrawable();
-            bg.setColor(Color.TRANSPARENT);
-            bg.setCornerRadius(dp(24));
-            box.setBackground(bg);
-
-            label = text(hint, 15, cHint(), false);
-            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.WRAP_CONTENT, dp(22),
-                    Gravity.CENTER_VERTICAL | Gravity.START);
-            lp.leftMargin = dp(20);
-            label.setLayoutParams(lp);
-            label.setGravity(Gravity.CENTER_VERTICAL);
-            label.setSingleLine(true);
-            label.setClickable(false);
-            label.setPivotX(0f);
-            label.setPivotY((float) dp(11));
-            updateStroke();
-        }
-
-        // À appeler en dernier : le libellé passe au-dessus du contenu
-        void attachLabel() {
-            box.addView(label);
-        }
-
-        void updateStroke() {
-            int w;
-            int c;
-            if (focused) {
-                w = dp(2);
-                c = COLOR_FOCUS;
-            } else if (error) {
-                w = dp(1);
-                c = COLOR_ERROR;
-            } else {
-                w = dp(1);
-                c = cStroke();
-            }
-            bg.setStroke(w, c);
-        }
-
-        void setFloated(boolean f, boolean animate) {
-            if (animate && floated == f) return;
-            floated = f;
-            float ty = f ? -(float) dp(17) : 0f;
-            float sc = f ? 0.8f : 1f;
-            if (animate) {
-                label.animate()
-                        .translationY(ty)
-                        .scaleX(sc)
-                        .scaleY(sc)
-                        .setDuration(160)
-                        .setInterpolator(new DecelerateInterpolator())
-                        .start();
-            } else {
-                label.animate().cancel();
-                label.setTranslationY(ty);
-                label.setScaleX(sc);
-                label.setScaleY(sc);
-            }
-        }
-    }
-
-    private FieldView buildEditField(final String key, String hint, int inputType,
-                                     int maxLen, int imeAction, String initial) {
-        final FieldView f = new FieldView(hint);
-        final EditText e = new EditText(context);
-        e.setBackground(null);
-        e.setTextSize(15);
-        e.setTextColor(cText());
-        e.setHintTextColor(cHint());
-        e.setTypeface(customFont != null ? customFont : Typeface.DEFAULT);
-        e.setInputType(inputType);
-        e.setSingleLine(true);
-        e.setImeOptions(imeAction);
-        e.setFilters(new InputFilter[]{new InputFilter.LengthFilter(maxLen)});
-        e.setPadding(dp(20), dp(24), dp(20), dp(6));
-        e.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
-        f.edit = e;
-        f.box.addView(e, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT));
-        f.attachLabel();
-
-        restoring = true;
-        e.setText(initial);
-        restoring = false;
-        f.setFloated(initial != null && !initial.isEmpty(), false);
-
-        e.setOnFocusChangeListener(new View.OnFocusChangeListener() {
-            @Override
-            public void onFocusChange(View v, boolean hasFocus) {
-                f.focused = hasFocus;
-                f.updateStroke();
-                f.setFloated(hasFocus || e.getText().length() > 0, true);
-            }
-        });
-
-        e.addTextChangedListener(new TextWatcher() {
-            @Override
-            public void beforeTextChanged(CharSequence s, int a, int b, int c) {
-            }
-
-            @Override
-            public void onTextChanged(CharSequence s, int a, int b, int c) {
-            }
-
-            @Override
-            public void afterTextChanged(Editable ed) {
-                if (restoring) return;
-                String s = ed.toString();
-                if (s.length() > 0 && !f.floated) f.setFloated(true, true);
-                f.error = false;
-                f.updateStroke();
-                onFieldChanged(key, s);
-            }
-        });
-
-        if (imeAction == EditorInfo.IME_ACTION_DONE) {
-            e.setOnEditorActionListener(new TextView.OnEditorActionListener() {
-                @Override
-                public boolean onEditorAction(TextView v, int actionId, android.view.KeyEvent ev) {
-                    if (actionId == EditorInfo.IME_ACTION_DONE) {
-                        hideKeyboard();
-                        e.clearFocus();
-                        return true;
-                    }
-                    return false;
-                }
-            });
-        }
-        return f;
-    }
-
-    private void onFieldChanged(String key, String value) {
-        if ("name".equals(key)) {
-            shopName = value;
-            nameRequiredShown = false;
-            scheduleNameCheck();
-        } else if ("phone".equals(key)) {
-            shopPhone = value;
-        } else if ("address".equals(key)) {
-            shopAddress = value;
-        }
-    }
-
-    // ---- sections ----
-
-    private void addNameSection() {
-        LinearLayout sec = section();
-        nameField = buildEditField("name", "Nom de la boutique",
-                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS,
-                MAX_NAME, EditorInfo.IME_ACTION_NEXT, shopName);
-        sec.addView(nameField.box);
-        sec.addView(desc("Le nom de votre boutique est le premier point de contact avec vos futurs clients"));
-
-        nameStatus = text("", 12, COLOR_ERROR, false);
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT);
-        p.topMargin = dp(6);
-        p.leftMargin = dp(2);
-        nameStatus.setLayoutParams(p);
-        nameStatus.setVisibility(View.GONE);
-        sec.addView(nameStatus);
-        showNameStatus();
-        formContainer.addView(sec);
-    }
-
-    private void addPhoneSection() {
-        LinearLayout sec = section();
-        phoneField = buildEditField("phone", "Téléphone du magasin",
-                InputType.TYPE_CLASS_PHONE,
-                MAX_PHONE, EditorInfo.IME_ACTION_NEXT, shopPhone);
-        sec.addView(phoneField.box);
-        sec.addView(desc("Indiquez le numéro de téléphone officiel de votre établissement. Ce contact permet à vos clients de vous joindre facilement."));
-        formContainer.addView(sec);
-    }
-
-    private void addAddressSection() {
-        LinearLayout sec = section();
-        addressField = buildEditField("address", "Adresse du magasin",
-                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES,
-                MAX_ADDRESS, EditorInfo.IME_ACTION_DONE, shopAddress);
-        sec.addView(addressField.box);
-        sec.addView(desc("Indiquez l'emplacement physique exact de votre commerce."));
-        formContainer.addView(sec);
-    }
-
-    // ---- spinner de catégories ----
-
-    private class ArrowView extends View {
-        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Path path = new Path();
-
-        ArrowView(Context c) {
-            super(c);
-            paint.setColor(cText());
-            paint.setStyle(Paint.Style.FILL);
-        }
-
-        @Override
-        protected void onDraw(Canvas canvas) {
-            float w = getWidth();
-            float h = getHeight();
-            path.reset();
-            path.moveTo(0f, 0f);
-            path.lineTo(w, 0f);
-            path.lineTo(w / 2f, h);
-            path.close();
-            canvas.drawPath(path, paint);
-        }
-    }
-
-    private void addCategorySection() {
-        LinearLayout sec = section();
-        catField = new FieldView("Catégorie");
-
-        catValue = text(shopCategory, 15, cText(), false);
-        catValue.setSingleLine(true);
-        catValue.setEllipsize(TextUtils.TruncateAt.END);
-        catValue.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
-        catValue.setPadding(dp(20), dp(24), dp(48), dp(6));
-        catField.box.addView(catValue, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT));
-
-        FrameLayout.LayoutParams ap = new FrameLayout.LayoutParams(
-                dp(14), dp(8), Gravity.END | Gravity.CENTER_VERTICAL);
-        ap.rightMargin = dp(20);
-        catField.box.addView(new ArrowView(context), ap);
-
-        catField.attachLabel();
-        catField.setFloated(!shopCategory.isEmpty(), false);
-        catField.box.setClickable(true);
-        catField.box.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                openCategoryPopup();
-            }
-        });
-
-        sec.addView(catField.box);
-        sec.addView(desc("Sélectionnez le secteur d'activité qui correspond le mieux à vos produits"));
-
-        catError = text("", 12, COLOR_ERROR, false);
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT);
-        p.topMargin = dp(6);
-        p.leftMargin = dp(2);
-        catError.setLayoutParams(p);
-        catError.setVisibility(View.GONE);
-        sec.addView(catError);
-        formContainer.addView(sec);
-    }
-
-    private void clearEditFocus() {
-        if (nameField != null && nameField.edit != null) nameField.edit.clearFocus();
-        if (phoneField != null && phoneField.edit != null) phoneField.edit.clearFocus();
-        if (addressField != null && addressField.edit != null) addressField.edit.clearFocus();
-    }
-
-    private void openCategoryPopup() {
-        if (categories.isEmpty()) {
-            OnError("Aucune catégorie : appelle SetShopCategories avant d'ouvrir le spinner.");
+        if (content == null) {
+            OnError("BuildShopHome: headerContainer doit être un arrangement.");
             return;
         }
-        hideKeyboard();
-        clearEditFocus();
-
-        final ListPopupWindow pop = new ListPopupWindow(context);
-        pop.setAnchorView(catField.box);
-        pop.setModal(true);
-        pop.setWidth(catField.box.getWidth());
-        pop.setHeight(categories.size() <= 5
-                ? ViewGroup.LayoutParams.WRAP_CONTENT
-                : dp(5 * 48 + 8));
-        pop.setVerticalOffset(dp(4));
-
-        GradientDrawable pbg = new GradientDrawable();
-        pbg.setColor(Color.WHITE);
-        pbg.setCornerRadius(dp(16));
-        pbg.setStroke(dp(1), cStroke());
-        pop.setBackgroundDrawable(pbg);
-
-        pop.setAdapter(new BaseAdapter() {
-            @Override
-            public int getCount() {
-                return categories.size();
-            }
-
-            @Override
-            public Object getItem(int position) {
-                return categories.get(position);
-            }
-
-            @Override
-            public long getItemId(int position) {
-                return position;
-            }
-
-            @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
-                TextView tv;
-                if (convertView instanceof TextView) {
-                    tv = (TextView) convertView;
-                } else {
-                    tv = text("", 15, cText(), false);
-                    tv.setGravity(Gravity.CENTER_VERTICAL);
-                    tv.setPadding(dp(20), 0, dp(20), 0);
-                    tv.setSingleLine(true);
-                    tv.setEllipsize(TextUtils.TruncateAt.END);
-                    tv.setLayoutParams(new AbsListView.LayoutParams(
-                            AbsListView.LayoutParams.MATCH_PARENT, dp(48)));
-                }
-                String item = categories.get(position);
-                tv.setText(item);
-                tv.setBackgroundColor(item.equals(shopCategory)
-                        ? Color.parseColor("#F2F2F2") : Color.TRANSPARENT);
-                return tv;
-            }
-        });
-
-        pop.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                selectCategory(categories.get(position), true);
-                pop.dismiss();
-            }
-        });
-
-        pop.setOnDismissListener(new PopupWindow.OnDismissListener() {
-            @Override
-            public void onDismiss() {
-                catField.focused = false;
-                catField.updateStroke();
-                if (shopCategory.isEmpty()) catField.setFloated(false, true);
-            }
-        });
-
-        catField.focused = true;
-        catField.updateStroke();
-        catField.setFloated(true, true);
-        pop.show();
-    }
-
-    private void selectCategory(String c, boolean fire) {
-        shopCategory = c == null ? "" : c;
-        if (catValue != null) catValue.setText(shopCategory);
-        if (catField != null) {
-            catField.error = false;
-            catField.updateStroke();
-            catField.setFloated(!shopCategory.isEmpty(), true);
+        if (sc == null) {
+            OnError("BuildShopHome: scrollContainer doit être un arrangement vertical scrollable.");
+            return;
         }
-        if (catError != null) catError.setVisibility(View.GONE);
-        if (fire) AfterCategorySelected(shopCategory);
-    }
-
-    // ---- logo ----
-
-    private class PhotoGlyph extends View {
-        private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Path path = new Path();
-
-        PhotoGlyph(Context c) {
-            super(c);
-            int grey = Color.parseColor("#C4C4C4");
-            stroke.setColor(grey);
-            stroke.setStyle(Paint.Style.STROKE);
-            stroke.setStrokeWidth((float) dp(4));
-            stroke.setStrokeJoin(Paint.Join.ROUND);
-            stroke.setStrokeCap(Paint.Cap.ROUND);
-            fill.setColor(grey);
-            fill.setStyle(Paint.Style.FILL);
+        ViewParent p = hv.getParent();
+        if (!(p instanceof LinearLayout) || sv.getParent() != p
+                || ((LinearLayout) p).getOrientation() != LinearLayout.VERTICAL) {
+            OnError("BuildShopHome: place les deux arrangements l'un sous l'autre dans le même arrangement vertical.");
+            return;
+        }
+        LinearLayout parent = (LinearLayout) p;
+        if (parent.indexOfChild(hv) >= parent.indexOfChild(sv)) {
+            OnError("BuildShopHome: le header doit être placé au-dessus de l'arrangement scrollable.");
+            return;
         }
 
-        @Override
-        protected void onDraw(Canvas canvas) {
-            float w = getWidth();
-            float h = getHeight();
-            float s = stroke.getStrokeWidth() / 2f;
-            canvas.drawRoundRect(new RectF(s, s, w - s, h - s), w * 0.2f, w * 0.2f, stroke);
-            canvas.drawCircle(w * 0.68f, h * 0.30f, w * 0.06f, fill);
-            path.reset();
-            path.moveTo(w * 0.12f, h * 0.78f);
-            path.lineTo(w * 0.38f, h * 0.50f);
-            path.lineTo(w * 0.55f, h * 0.68f);
-            path.lineTo(w * 0.68f, h * 0.58f);
-            path.lineTo(w * 0.88f, h * 0.78f);
-            canvas.drawPath(path, stroke);
-        }
-    }
+        detachScrollListener();
 
-    private void addLogoSection() {
-        LinearLayout sec = section();
-        sec.setGravity(Gravity.CENTER_HORIZONTAL);
+        DisplayMetrics dm = context.getResources().getDisplayMetrics();
+        screenW = dm.widthPixels;
+        screenH = dm.heightPixels;
+        logoHeightPx = (int) (screenH * 0.35);
+        int btnH = (int) (screenH * 0.08);
+        int btnW = (int) (screenW * 0.90);
+        int cardH = (int) (screenH * 0.05);
+        int cardW = (int) (screenW * 0.30);
+        headerTotalPx = logoHeightPx + dp(10) + btnH + dp(6) + cardH + dp(10);
 
-        FrameLayout outer = new FrameLayout(context);
-        LinearLayout.LayoutParams op = new LinearLayout.LayoutParams(dp(158), dp(158));
-        op.gravity = Gravity.CENTER_HORIZONTAL;
-        op.topMargin = dp(20);
-        op.bottomMargin = dp(20);
-        outer.setLayoutParams(op);
-        GradientDrawable obg = new GradientDrawable();
-        obg.setColor(Color.WHITE);
-        obg.setCornerRadius(dp(30));
-        outer.setBackground(obg);
-        outer.setElevation((float) dp(6));
-        outer.setRotation(-4f);
+        headerRoot = hv;
+        scrollOuter = sv;
+        scrollView = sc;
 
-        final int innerRadius = dp(26);
-        FrameLayout inner = new FrameLayout(context);
-        GradientDrawable ibg = new GradientDrawable();
-        ibg.setColor(Color.parseColor("#E8E8E8"));
-        ibg.setCornerRadius(innerRadius);
-        inner.setBackground(ibg);
-        inner.setOutlineProvider(new ViewOutlineProvider() {
+        // ---- contenu du header ----
+        LinearLayout wrapper = new LinearLayout(context);
+        wrapper.setOrientation(LinearLayout.VERTICAL);
+        wrapper.setLayoutParams(new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, headerTotalPx));
+
+        wrapper.addView(buildLogoFrame());
+
+        TextView btn = text("Ajouter un produit", 15, Color.WHITE);
+        btn.setGravity(Gravity.CENTER);
+        GradientDrawable btnBg = new GradientDrawable();
+        btnBg.setColor(Color.argb(0xED, 0x1A, 0x1A, 0x1B));
+        btnBg.setCornerRadius(dp(20));
+        btn.setBackground(btnBg);
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(btnW, btnH);
+        bp.gravity = Gravity.CENTER_HORIZONTAL;
+        bp.topMargin = dp(10);
+        btn.setLayoutParams(bp);
+        btn.setClickable(true);
+        btn.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void getOutline(View view, Outline outline) {
-                outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), innerRadius);
+            public void onClick(View v) {
+                OnAddProductClick();
             }
         });
-        inner.setClipToOutline(true);
-        outer.addView(inner, new FrameLayout.LayoutParams(dp(134), dp(134), Gravity.CENTER));
+        wrapper.addView(btn);
 
-        logoGlyph = new PhotoGlyph(context);
-        inner.addView(logoGlyph, new FrameLayout.LayoutParams(dp(44), dp(44), Gravity.CENTER));
+        countTv = text(countLabel(articleCount), 12, ink(0x7E));
+        countTv.setGravity(Gravity.CENTER);
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setColor(Color.parseColor("#F5F5F5"));
+        cardBg.setCornerRadius(dp(8));
+        countTv.setBackground(cardBg);
+        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(cardW, cardH);
+        cp.gravity = Gravity.END;
+        cp.rightMargin = dp(15);
+        cp.topMargin = dp(6);
+        cp.bottomMargin = dp(10);
+        countTv.setLayoutParams(cp);
+        wrapper.addView(countTv);
+
+        content.removeAllViews();
+        content.addView(wrapper);
+
+        ViewGroup.LayoutParams hl = hv.getLayoutParams();
+        if (hl != null) {
+            hl.height = headerTotalPx;
+            hv.setLayoutParams(hl);
+        }
+
+        // ---- le header passe au-dessus de la grille et défile avec elle ----
+        hv.setOutlineProvider(null);
+        hv.setTranslationZ((float) dp(2));
+
+        ViewGroup.LayoutParams sl = sv.getLayoutParams();
+        if (!(sl instanceof ViewGroup.MarginLayoutParams)) {
+            OnError("BuildShopHome: arrangement scrollable incompatible.");
+            return;
+        }
+        ViewGroup.MarginLayoutParams mlp = (ViewGroup.MarginLayoutParams) sl;
+        if (adjustedScrollView != sv) {
+            adjustedScrollView = sv;
+            origScrollHeight = mlp.height;
+        }
+        mlp.topMargin = -headerTotalPx;
+        if (origScrollHeight > 0) mlp.height = origScrollHeight + headerTotalPx;
+        sv.setLayoutParams(mlp);
+
+        sc.setClipToPadding(false);
+        sc.setPadding(sc.getPaddingLeft(), headerTotalPx, sc.getPaddingRight(), sc.getPaddingBottom());
+
+        saveStatusBar();
+        attachScrollListener();
+        applyLogoToView();
+        applyScroll();
+    }
+
+    private View buildLogoFrame() {
+        FrameLayout frame = new FrameLayout(context);
+        frame.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, logoHeightPx));
+        frame.setBackgroundColor(DEFAULT_HEADER_COLOR);
 
         logoImage = new ImageView(context);
         logoImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        logoImage.setVisibility(View.GONE);
-        inner.addView(logoImage, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT));
+        frame.addView(logoImage, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
 
-        outer.setClickable(true);
-        outer.setOnClickListener(new View.OnClickListener() {
+        scrimView = new View(context);
+        scrimView.setBackgroundColor(Color.TRANSPARENT);
+        frame.addView(scrimView, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+
+        nameTv = text(shopNameValue, 35, Color.WHITE);
+        nameTv.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+        nameTv.setPadding(dp(26), 0, dp(26), 0);
+        nameTv.setMaxLines(2);
+        nameTv.setEllipsize(TextUtils.TruncateAt.END);
+        frame.addView(nameTv, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER_VERTICAL));
+
+        categoryTv = text(shopCategoryValue, 15, Color.WHITE);
+        categoryTv.setGravity(Gravity.CENTER);
+        frame.addView(categoryTv, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, dp(32), Gravity.TOP));
+
+        FrameLayout menuBtn = new FrameLayout(context);
+        menuBtn.setClickable(true);
+        menuBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                OpenLogoPicker();
+                OpenShopMenu();
             }
         });
+        menuBtn.addView(new HamburgerView(context), new FrameLayout.LayoutParams(
+                dp(21), dp(15), Gravity.CENTER));
+        frame.addView(menuBtn, new FrameLayout.LayoutParams(
+                dp(40), dp(32), Gravity.TOP | Gravity.START));
 
-        sec.addView(outer);
-        sec.addView(desc("Ajoutez votre logo pour finaliser l'apparence de votre magasin sur l'application"));
-        formContainer.addView(sec);
-        updateLogoView();
+        return frame;
     }
 
-    private void updateLogoView() {
-        if (logoImage == null || logoGlyph == null) return;
-        if (logoPath.isEmpty()) {
-            logoImage.setImageDrawable(null);
-            logoImage.setVisibility(View.GONE);
-            logoGlyph.setVisibility(View.VISIBLE);
+    // =========================================================================
+    // LOGO DU VENDEUR
+    // =========================================================================
+
+    @SimpleFunction(description = "Charge le logo du vendeur dans le header : lien http(s):// ou chemin de fichier (file://...). La barre de statut prend automatiquement la couleur du haut du logo.")
+    public void SetShopLogoSource(final String source) {
+        if (source == null || source.trim().isEmpty()) {
+            OnError("SetShopLogoSource: source vide.");
             return;
         }
-        Bitmap b = decodeSampled(stripFile(logoPath), 400);
-        if (b != null) {
-            logoImage.setImageBitmap(b);
-            logoImage.setVisibility(View.VISIBLE);
-            logoGlyph.setVisibility(View.GONE);
-        }
-    }
-
-    private Bitmap decodeSampled(String path, int maxWidth) {
-        try {
-            BitmapFactory.Options o = new BitmapFactory.Options();
-            o.inJustDecodeBounds = true;
-            BitmapFactory.decodeFile(path, o);
-            if (o.outWidth <= 0) return null;
-            int sample = 1;
-            while (o.outWidth / (sample * 2) >= maxWidth) sample *= 2;
-            o.inJustDecodeBounds = false;
-            o.inSampleSize = sample;
-            return BitmapFactory.decodeFile(path, o);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    // =========================================================================
-    // SÉLECTION DU LOGO (permission + galerie comme ManaplaceUtils,
-    // copie dans le cache comme Manatest, puis compression)
-    // =========================================================================
-
-    @SimpleFunction(description = "Ouvre la galerie pour choisir le logo de la boutique (demande la permission si besoin). Appelée automatiquement au toucher de la tuile logo. OnShopLogoPicked se déclenche quand le logo est prêt.")
-    public void OpenLogoPicker() {
-        String permission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-                ? "android.permission.READ_MEDIA_IMAGES"
-                : "android.permission.READ_EXTERNAL_STORAGE";
-
-        form.askPermission(permission, new PermissionResultHandler() {
-            @Override
-            public void HandlePermissionResponse(String permissionName, boolean granted) {
-                if (!granted) {
-                    OnError("Permission refusée.");
-                    return;
-                }
-                activity.runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        try {
-                            Intent i = new Intent(Intent.ACTION_PICK);
-                            i.setType("image/*");
-                            form.startActivityForResult(i, pickRequestCode);
-                        } catch (Exception e) {
-                            OnError("OpenLogoPicker: " + e.getMessage());
-                        }
-                    }
-                });
-            }
-        });
-    }
-
-    @Override
-    public void resultReturned(int requestCode, int resultCode, Intent data) {
-        if (requestCode != pickRequestCode) return;
-        if (resultCode != Activity.RESULT_OK || data == null) return; // annulation : pas une erreur
-        final Uri uri = data.getData();
-        if (uri == null) {
-            OnError("Aucune image sélectionnée (URI nulle).");
-            return;
-        }
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                final String result = processLogo(uri);
-                if (result == null) return;
-                runOnUi(new Runnable() {
-                    @Override
-                    public void run() {
-                        logoPath = result;
-                        updateLogoView();
-                        OnShopLogoPicked(result);
-                    }
-                });
-            }
-        }).start();
-    }
-
-    private String processLogo(Uri uri) {
-        File raw = null;
-        try {
-            File dir = new File(context.getCacheDir(), "manatest_logo");
-            dir.mkdirs();
-            long t = System.currentTimeMillis();
-            raw = new File(dir, "raw_" + t);
-
-            InputStream in = context.getContentResolver().openInputStream(uri);
-            if (in == null) {
-                fail("Logo: image illisible.");
-                return null;
-            }
-            FileOutputStream out = new FileOutputStream(raw);
-            try {
-                byte[] buf = new byte[8192];
-                int n;
-                while ((n = in.read(buf)) > 0) {
-                    out.write(buf, 0, n);
-                }
-            } finally {
-                try { in.close(); } catch (Exception ignored) { }
-                try { out.close(); } catch (Exception ignored) { }
-            }
-
-            BitmapFactory.Options o = new BitmapFactory.Options();
-            o.inJustDecodeBounds = true;
-            BitmapFactory.decodeFile(raw.getAbsolutePath(), o);
-            if (o.outWidth <= 0 || o.outHeight <= 0) {
-                fail("Logo: ce fichier n'est pas une image.");
-                return null;
-            }
-            int sample = 1;
-            while (o.outWidth / (sample * 2) >= LOGO_MAX_WIDTH) sample *= 2;
-            o.inJustDecodeBounds = false;
-            o.inSampleSize = sample;
-            Bitmap bmp = BitmapFactory.decodeFile(raw.getAbsolutePath(), o);
-            if (bmp == null) {
-                fail("Logo: décodage impossible.");
-                return null;
-            }
-
-            int degrees = 0;
-            try {
-                ExifInterface exif = new ExifInterface(raw.getAbsolutePath());
-                int ori = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION,
-                        ExifInterface.ORIENTATION_NORMAL);
-                if (ori == ExifInterface.ORIENTATION_ROTATE_90) degrees = 90;
-                else if (ori == ExifInterface.ORIENTATION_ROTATE_180) degrees = 180;
-                else if (ori == ExifInterface.ORIENTATION_ROTATE_270) degrees = 270;
-            } catch (Exception ignored) {
-            }
-            if (degrees != 0) {
-                Matrix m = new Matrix();
-                m.postRotate(degrees);
-                Bitmap rotated = Bitmap.createBitmap(bmp, 0, 0, bmp.getWidth(), bmp.getHeight(), m, true);
-                if (rotated != bmp) {
-                    bmp.recycle();
-                    bmp = rotated;
-                }
-            }
-
-            File dest = new File(dir, "logo_" + t + ".jpg");
-            FileOutputStream fos = new FileOutputStream(dest);
-            try {
-                bmp.compress(Bitmap.CompressFormat.JPEG, LOGO_QUALITY, fos);
-                fos.flush();
-            } finally {
-                try { fos.close(); } catch (Exception ignored) { }
-                bmp.recycle();
-            }
-            return "file://" + dest.getAbsolutePath();
-        } catch (Exception e) {
-            fail("Logo: " + e.getMessage());
-            return null;
-        } finally {
-            if (raw != null) raw.delete();
-        }
-    }
-
-    // =========================================================================
-    // VÉRIFICATION DU NOM EN DIRECT
-    // =========================================================================
-
-    private void scheduleNameCheck() {
-        if (nameRunnable != null) handler.removeCallbacks(nameRunnable);
-        nameSeq++;
-        nameState = 0;
-        nameChecking = false;
-        showNameStatus();
-
-        final String n = shopName == null ? "" : shopName.trim();
-        if (n.isEmpty() || nameCheckUrl.isEmpty()) return;
-
-        nameChecking = true;
-        final int seq = nameSeq;
-        nameRunnable = new Runnable() {
-            @Override
-            public void run() {
-                runNameCheck(n, seq);
-            }
-        };
-        handler.postDelayed(nameRunnable, NAME_DEBOUNCE_MS);
-    }
-
-    private String buildNameUrl(String name) throws Exception {
-        String enc = URLEncoder.encode(name, "UTF-8");
-        if (nameCheckUrl.contains("{name}")) {
-            return nameCheckUrl.replace("{name}", enc);
-        }
-        return nameCheckUrl + (nameCheckUrl.contains("?") ? "&" : "?") + "name=" + enc;
-    }
-
-    private Boolean nameAvailableFromJson(JSONObject o) {
-        if (o.has("available")) return Boolean.valueOf(o.optBoolean("available"));
-        String[] taken = {"exists", "taken", "used", "isUsed", "already_used", "alreadyUsed"};
-        for (int i = 0; i < taken.length; i++) {
-            if (o.has(taken[i])) return Boolean.valueOf(!o.optBoolean(taken[i]));
-        }
-        JSONObject data = o.optJSONObject("data");
-        if (data != null) return nameAvailableFromJson(data);
-        return null;
-    }
-
-    private void runNameCheck(final String name, final int seq) {
-        final String url = nameCheckUrl;
-        final String auth = nameCheckAuth;
+        final String src = source.trim();
         new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
-                    String[] r = httpGet(buildNameUrl(name), auth);
-                    int code = Integer.parseInt(r[0]);
-                    if (code >= 400) throw new Exception("serveur " + code);
-                    Boolean avail = nameAvailableFromJson(new JSONObject(r[1].trim()));
-                    if (avail == null) throw new Exception("réponse inattendue (available / exists manquant)");
-                    final boolean available = avail.booleanValue();
-                    runOnUi(new Runnable() {
-                        @Override
-                        public void run() {
-                            if (seq != nameSeq) return;
-                            nameChecking = false;
-                            nameState = available ? 1 : 2;
-                            showNameStatus();
-                            OnShopNameChecked(name, available);
-                        }
-                    });
-                } catch (final Exception e) {
-                    runOnUi(new Runnable() {
-                        @Override
-                        public void run() {
-                            if (seq != nameSeq) return;
-                            nameChecking = false;
-                            nameState = 3;
-                            showNameStatus();
-                            OnError("Vérification du nom: " + e.getMessage());
-                        }
-                    });
-                }
-            }
-        }).start();
-    }
-
-    private void showNameStatus() {
-        if (nameStatus == null) return;
-        String msg = "";
-        int color = COLOR_ERROR;
-        if (nameRequiredShown) {
-            msg = "Le nom de la boutique est obligatoire";
-        } else if (nameState == 2) {
-            msg = "Ce nom est déjà utilisé";
-        } else if (nameState == 1 && shopName != null && !shopName.trim().isEmpty()) {
-            msg = "Ce nom est disponible";
-            color = COLOR_OK;
-        }
-        nameStatus.setTextColor(color);
-        nameStatus.setText(msg);
-        nameStatus.setVisibility(msg.isEmpty() ? View.GONE : View.VISIBLE);
-    }
-
-    // =========================================================================
-    // LECTURE DES SAISIES
-    // =========================================================================
-
-    @SimpleFunction(description = "Retourne la catégorie choisie dans le spinner (vide si aucune).")
-    public String GetSelectedCategory() {
-        return shopCategory == null ? "" : shopCategory;
-    }
-
-    @SimpleFunction(description = "Retourne le nom de la boutique saisi.")
-    public String GetShopName() {
-        return shopName == null ? "" : shopName.trim();
-    }
-
-    @SimpleFunction(description = "Retourne le téléphone du magasin saisi.")
-    public String GetShopPhone() {
-        return shopPhone == null ? "" : shopPhone.trim();
-    }
-
-    @SimpleFunction(description = "Retourne l'adresse du magasin saisie.")
-    public String GetShopAddress() {
-        return shopAddress == null ? "" : shopAddress.trim();
-    }
-
-    @SimpleFunction(description = "Retourne le lien file:// du logo choisi (vide si aucun).")
-    public String GetShopLogo() {
-        return logoPath == null ? "" : logoPath;
-    }
-
-    @SimpleFunction(description = "Retourne tout le formulaire en JSON : name, category, phone, address, logo, uid, formValid.")
-    public String GetShopFormJson() {
-        try {
-            JSONObject o = new JSONObject();
-            o.put("name", GetShopName());
-            o.put("category", GetSelectedCategory());
-            o.put("phone", GetShopPhone());
-            o.put("address", GetShopAddress());
-            o.put("logo", GetShopLogo());
-            o.put("uid", prefs().getString(PREF_CURRENT_UID, ""));
-            o.put("formValid", firstError() == null);
-            return o.toString();
-        } catch (Exception e) {
-            OnError("GetShopFormJson: " + e.getMessage());
-            return "{}";
-        }
-    }
-
-    // =========================================================================
-    // VALIDATION (sécurité : nom et catégorie uniquement)
-    // =========================================================================
-
-    // Retourne {clé, message} ou null si le formulaire est valide
-    private String[] firstError() {
-        if (shopName == null || shopName.trim().isEmpty()) {
-            return new String[]{"name", "Le nom de la boutique est obligatoire"};
-        }
-        if (nameState == 2) {
-            return new String[]{"name", "Ce nom est déjà utilisé"};
-        }
-        if (nameChecking) {
-            return new String[]{"name", "Vérification du nom en cours, patiente un instant"};
-        }
-        if (shopCategory == null || shopCategory.trim().isEmpty()) {
-            return new String[]{"category", "Choisis une catégorie"};
-        }
-        return null;
-    }
-
-    @SimpleFunction(description = "Vérifie le formulaire. Retourne vrai si le nom (obligatoire, libre) et la catégorie (obligatoire) sont valides. Sinon retourne faux, affiche l'erreur en rouge sous le champ et déclenche OnShopFormInvalid. À mettre directement dans un « si ».")
-    public boolean ValidateShopForm() {
-        final String[] err = firstError();
-        if (err == null) return true;
-        runOnUi(new Runnable() {
-            @Override
-            public void run() {
-                if ("name".equals(err[0])) {
-                    if (nameField != null) {
-                        nameField.error = true;
-                        nameField.updateStroke();
+                    int maxW = context.getResources().getDisplayMetrics().widthPixels;
+                    Bitmap bmp;
+                    if (src.startsWith("http://") || src.startsWith("https://")) {
+                        bmp = downloadBitmap(src, maxW);
+                    } else {
+                        bmp = decodeFile(src.startsWith("file://") ? src.substring(7) : src, maxW);
                     }
-                    if (shopName == null || shopName.trim().isEmpty()) {
-                        nameRequiredShown = true;
-                    }
-                    showNameStatus();
-                } else if ("category".equals(err[0])) {
-                    if (catField != null) {
-                        catField.error = true;
-                        catField.updateStroke();
-                    }
-                    if (catError != null) {
-                        catError.setText(err[1]);
-                        catError.setVisibility(View.VISIBLE);
-                    }
-                }
-                OnShopFormInvalid(err[0], err[1]);
-            }
-        });
-        return false;
-    }
-
-    @SimpleFunction(description = "Retourne le premier message d'erreur du formulaire, ou \"\" si tout est valide (sans rien afficher).")
-    public String GetShopFormError() {
-        String[] err = firstError();
-        return err == null ? "" : err[1];
-    }
-
-    // =========================================================================
-    // ENVOI AU SERVEUR (multipart/form-data)
-    // =========================================================================
-
-    private void mpField(DataOutputStream out, String boundary, String name, String value) throws Exception {
-        out.write(("--" + boundary + "\r\n").getBytes("UTF-8"));
-        out.write(("Content-Disposition: form-data; name=\"" + name + "\"\r\n").getBytes("UTF-8"));
-        out.write("Content-Type: text/plain; charset=UTF-8\r\n\r\n".getBytes("UTF-8"));
-        out.write((value == null ? "" : value).getBytes("UTF-8"));
-        out.write("\r\n".getBytes("UTF-8"));
-    }
-
-    private boolean responseIsSuccess(String body) {
-        try {
-            JSONObject o = new JSONObject(body.trim());
-            if (o.has("success")) return o.optBoolean("success");
-            if (o.has("error")) return false;
-            return true;
-        } catch (Exception e) {
-            return true; // 2xx sans JSON : succès
-        }
-    }
-
-    @SimpleFunction(description = "Envoie la création de boutique au serveur (POST multipart). Champs : uid, name, category, phone, address, formValid=true, et le fichier logo. authorization : en-tête Authorization (ex : Bearer <jeton Firebase>). uid : l'UID Firebase de l'utilisateur, réutilisé par le serveur pour créer le nœud vendeur. Le formulaire est vérifié avant l'envoi. Réponse : OnShopCreated (succès, l'utilisateur devient vendeur pour toujours) ou OnShopCreateFailed.")
-    public void SubmitShopForm(final String url, final String authorization, final String uid) {
-        if (url == null || url.trim().isEmpty()) {
-            OnError("SubmitShopForm: adresse du serveur vide.");
-            return;
-        }
-        if (uid == null || uid.trim().isEmpty()) {
-            OnError("SubmitShopForm: uid vide.");
-            return;
-        }
-        if (submitting) return;
-        if (!ValidateShopForm()) return;
-
-        submitting = true;
-        final String cleanUid = uid.trim();
-        prefs().edit().putString(PREF_CURRENT_UID, cleanUid).apply();
-
-        final Map<String, String> fields = new LinkedHashMap<String, String>();
-        fields.put("uid", cleanUid);
-        fields.put("name", GetShopName());
-        fields.put("category", GetSelectedCategory());
-        fields.put("phone", GetShopPhone());
-        fields.put("address", GetShopAddress());
-        fields.put("formValid", "true");
-        final String logo = stripFile(GetShopLogo());
-        final String target = url.trim();
-        final String auth = authorization == null ? "" : authorization.trim();
-
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                HttpURLConnection c = null;
-                try {
-                    String boundary = "----Manatest" + System.currentTimeMillis();
-                    c = (HttpURLConnection) new URL(target).openConnection();
-                    c.setRequestMethod("POST");
-                    c.setDoOutput(true);
-                    c.setConnectTimeout(20000);
-                    c.setReadTimeout(60000);
-                    c.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
-                    if (!auth.isEmpty()) {
-                        c.setRequestProperty("Authorization", auth);
-                    }
-                    DataOutputStream out = new DataOutputStream(c.getOutputStream());
-                    for (Map.Entry<String, String> e : fields.entrySet()) {
-                        mpField(out, boundary, e.getKey(), e.getValue());
-                    }
-                    if (logo != null && !logo.isEmpty()) {
-                        File f = new File(logo);
-                        if (f.exists()) {
-                            out.write(("--" + boundary + "\r\n").getBytes("UTF-8"));
-                            out.write("Content-Disposition: form-data; name=\"logo\"; filename=\"logo.jpg\"\r\n".getBytes("UTF-8"));
-                            out.write("Content-Type: image/jpeg\r\n\r\n".getBytes("UTF-8"));
-                            FileInputStream in = new FileInputStream(f);
-                            try {
-                                byte[] buf = new byte[8192];
-                                int n;
-                                while ((n = in.read(buf)) > 0) {
-                                    out.write(buf, 0, n);
-                                }
-                            } finally {
-                                try { in.close(); } catch (Exception ignored) { }
-                            }
-                            out.write("\r\n".getBytes("UTF-8"));
-                        }
-                    }
-                    out.write(("--" + boundary + "--\r\n").getBytes("UTF-8"));
-                    out.flush();
-                    out.close();
-
-                    final int code = c.getResponseCode();
-                    InputStream is = code >= 400 ? c.getErrorStream() : c.getInputStream();
-                    final String body = readAll(is);
-                    final boolean ok = code >= 200 && code < 300 && responseIsSuccess(body);
-                    runOnUi(new Runnable() {
-                        @Override
-                        public void run() {
-                            submitting = false;
-                            if (ok) {
-                                setSeller(cleanUid, true);
-                                OnShopCreated(code, body);
-                            } else {
-                                if (code == 409) {
-                                    nameState = 2;
-                                    showNameStatus();
-                                }
-                                OnShopCreateFailed(code, body);
-                            }
-                        }
-                    });
-                } catch (final Exception e) {
-                    runOnUi(new Runnable() {
-                        @Override
-                        public void run() {
-                            submitting = false;
-                            OnError("SubmitShopForm: " + e.getMessage());
-                        }
-                    });
-                } finally {
-                    if (c != null) c.disconnect();
-                }
-            }
-        }).start();
-    }
-
-    // =========================================================================
-    // STATUT VENDEUR PERMANENT
-    // =========================================================================
-
-    private boolean readSeller(String uid) {
-        return uid != null && !uid.isEmpty() && prefs().getBoolean(PREF_SELLER_PREFIX + uid, false);
-    }
-
-    // Enregistre le statut ; déclenche OnSellerStatusChanged seulement s'il change
-    private void setSeller(String uid, boolean value) {
-        if (uid == null || uid.isEmpty()) return;
-        boolean old = readSeller(uid);
-        SharedPreferences.Editor ed = prefs().edit();
-        if (value) {
-            ed.putBoolean(PREF_SELLER_PREFIX + uid, true);
-        } else {
-            ed.remove(PREF_SELLER_PREFIX + uid);
-        }
-        ed.apply();
-        if (old != value) OnSellerStatusChanged(value);
-    }
-
-    private Boolean sellerFromJson(JSONObject o) {
-        String[] keys = {"seller", "isSeller", "is_seller", "hasShop", "has_shop", "shop"};
-        for (int i = 0; i < keys.length; i++) {
-            if (o.has(keys[i])) {
-                Object v = o.opt(keys[i]);
-                if (v instanceof Boolean) return (Boolean) v;
-                if (v == null || v == JSONObject.NULL) return Boolean.FALSE;
-                if (v instanceof Number) return Boolean.valueOf(((Number) v).intValue() != 0);
-                if (v instanceof String) {
-                    String s = ((String) v).trim();
-                    return Boolean.valueOf("true".equalsIgnoreCase(s) || "1".equals(s)
-                            || "seller".equalsIgnoreCase(s) || "vendeur".equalsIgnoreCase(s));
-                }
-                return Boolean.TRUE; // objet « shop » présent
-            }
-        }
-        if (o.has("role")) {
-            String r = o.optString("role", "");
-            return Boolean.valueOf("seller".equalsIgnoreCase(r) || "vendeur".equalsIgnoreCase(r));
-        }
-        JSONObject data = o.optJSONObject("data");
-        if (data != null) return sellerFromJson(data);
-        return null;
-    }
-
-    // Appel réseau synchrone (à lancer hors du fil principal). null = réponse inexploitable
-    private Boolean fetchSeller(String url, String auth, String uid) throws Exception {
-        String enc = URLEncoder.encode(uid, "UTF-8");
-        String target = url.contains("{uid}")
-                ? url.replace("{uid}", enc)
-                : url + (url.contains("?") ? "&" : "?") + "uid=" + enc;
-        String[] r = httpGet(target, auth);
-        int code = Integer.parseInt(r[0]);
-        if (code >= 400) throw new Exception("serveur " + code);
-        return sellerFromJson(new JSONObject(r[1].trim()));
-    }
-
-    private void applySellerResult(String uid, boolean isSeller) {
-        setSeller(uid, isSeller);
-        OnSellerStatusChecked(isSeller);
-    }
-
-    @SimpleFunction(description = "Mémorise l'utilisateur connecté (UID Firebase). À appeler à la connexion : IsSeller répond tout de suite avec le statut déjà connu sur ce téléphone.")
-    public void SetShopUser(String uid) {
-        prefs().edit().putString(PREF_CURRENT_UID, uid == null ? "" : uid.trim()).apply();
-    }
-
-    @SimpleFunction(description = "Retourne vrai si l'utilisateur connecté est déjà vendeur (statut gardé dans le téléphone et confirmé par le serveur).")
-    public boolean IsSeller() {
-        return readSeller(prefs().getString(PREF_CURRENT_UID, ""));
-    }
-
-    @SimpleFunction(description = "Retourne vrai si la page « Créer ma boutique » doit encore être affichée (faux dès que l'utilisateur est vendeur).")
-    public boolean ShouldShowShopCreation() {
-        return !IsSeller();
-    }
-
-    @SimpleFunction(description = "Demande une fois au serveur si l'utilisateur est vendeur (utile à la reconnexion, même après effacement des données du téléphone). GET url?uid=... (ou {uid} dans l'adresse). Réponse JSON attendue : {\"seller\": true} (ou isSeller, hasShop). Résultat dans OnSellerStatusChecked ; OnSellerStatusChanged si le statut change.")
-    public void CheckSellerStatus(final String url, final String authorization, final String uid) {
-        if (url == null || url.trim().isEmpty() || uid == null || uid.trim().isEmpty()) {
-            OnError("CheckSellerStatus: adresse ou uid vide.");
-            return;
-        }
-        final String cleanUid = uid.trim();
-        final String auth = authorization == null ? "" : authorization.trim();
-        SetShopUser(cleanUid);
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    final Boolean r = fetchSeller(url.trim(), auth, cleanUid);
-                    if (r == null) {
-                        fail("CheckSellerStatus: réponse inattendue (seller / isSeller / hasShop manquant).");
+                    if (bmp == null) {
+                        fail("SetShopLogoSource: image illisible.");
                         return;
                     }
+                    final Bitmap result = bmp;
                     runOnUi(new Runnable() {
                         @Override
                         public void run() {
-                            applySellerResult(cleanUid, r.booleanValue());
+                            logoBitmap = result;
+                            applyLogoToView();
+                            applyScroll();
+                            OnShopLogoLoaded();
                         }
                     });
                 } catch (Exception e) {
-                    fail("CheckSellerStatus: " + e.getMessage());
+                    fail("SetShopLogoSource: " + e.getMessage());
                 }
             }
         }).start();
     }
 
-    @SimpleFunction(description = "Écoute le serveur en continu : vérifie le statut vendeur tout de suite puis toutes les intervalSeconds secondes (minimum 5) et déclenche OnSellerStatusChanged dès que l'utilisateur devient vendeur. L'écoute s'arrête d'elle-même une fois vendeur.")
-    public void StartSellerStatusListener(final String url, final String authorization,
-                                          final String uid, int intervalSeconds) {
-        if (url == null || url.trim().isEmpty() || uid == null || uid.trim().isEmpty()) {
-            OnError("StartSellerStatusListener: adresse ou uid vide.");
+    private Bitmap decodeFile(String path, int maxW) {
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(path, o);
+        if (o.outWidth <= 0) return null;
+        o.inSampleSize = sampleFor(o.outWidth, maxW);
+        o.inJustDecodeBounds = false;
+        return BitmapFactory.decodeFile(path, o);
+    }
+
+    private Bitmap downloadBitmap(String url, int maxW) throws Exception {
+        HttpURLConnection c = null;
+        try {
+            c = (HttpURLConnection) new URL(url).openConnection();
+            c.setConnectTimeout(15000);
+            c.setReadTimeout(20000);
+            int code = c.getResponseCode();
+            if (code >= 400) throw new Exception("serveur " + code);
+            InputStream is = c.getInputStream();
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            int total = 0;
+            while ((n = is.read(buf)) > 0) {
+                total += n;
+                if (total > 12 * 1024 * 1024) throw new Exception("image trop lourde");
+                bos.write(buf, 0, n);
+            }
+            is.close();
+            byte[] data = bos.toByteArray();
+            BitmapFactory.Options o = new BitmapFactory.Options();
+            o.inJustDecodeBounds = true;
+            BitmapFactory.decodeByteArray(data, 0, data.length, o);
+            if (o.outWidth <= 0) return null;
+            o.inSampleSize = sampleFor(o.outWidth, maxW);
+            o.inJustDecodeBounds = false;
+            return BitmapFactory.decodeByteArray(data, 0, data.length, o);
+        } finally {
+            if (c != null) c.disconnect();
+        }
+    }
+
+    private int sampleFor(int width, int maxW) {
+        int s = 1;
+        while (width / (s * 2) >= maxW) s *= 2;
+        return s;
+    }
+
+    // Couleur moyenne de la bande du haut de l'image, telle qu'elle est affichée (center-crop)
+    private int topColorOf(Bitmap bmp) {
+        try {
+            int bw = bmp.getWidth();
+            int bh = bmp.getHeight();
+            float scale = Math.max((float) screenW / bw, (float) logoHeightPx / bh);
+            float visH = logoHeightPx / scale;
+            int y = (int) Math.max(0f, (bh - visH) / 2f);
+            int stripH = Math.max(1, (int) (visH * 0.06f));
+            stripH = Math.min(stripH, bh - y);
+            Bitmap strip = Bitmap.createBitmap(bmp, 0, y, bw, stripH);
+            Bitmap small = Bitmap.createScaledBitmap(strip, 8, 2, true);
+            long r = 0, g = 0, b = 0;
+            int count = 0;
+            for (int i = 0; i < small.getWidth(); i++) {
+                for (int j = 0; j < small.getHeight(); j++) {
+                    int c = small.getPixel(i, j);
+                    r += Color.red(c);
+                    g += Color.green(c);
+                    b += Color.blue(c);
+                    count++;
+                }
+            }
+            if (small != strip) small.recycle();
+            if (strip != bmp) strip.recycle();
+            if (count == 0) return DEFAULT_HEADER_COLOR;
+            return Color.rgb((int) (r / count), (int) (g / count), (int) (b / count));
+        } catch (Exception e) {
+            return DEFAULT_HEADER_COLOR;
+        }
+    }
+
+    private void applyLogoToView() {
+        if (logoImage == null) return;
+        if (logoBitmap == null) {
+            headerColor = DEFAULT_HEADER_COLOR;
+            if (scrimView != null) scrimView.setBackgroundColor(Color.TRANSPARENT);
             return;
         }
-        StopSellerStatusListener();
-        final String cleanUid = uid.trim();
-        final String cleanUrl = url.trim();
-        final String auth = authorization == null ? "" : authorization.trim();
-        final long every = Math.max(5, intervalSeconds) * 1000L;
-        SetShopUser(cleanUid);
-        sellerListening = true;
+        logoImage.setImageBitmap(logoBitmap);
+        int avg = topColorOf(logoBitmap);
+        // Logo très clair : léger voile sombre pour garder le texte blanc lisible
+        int scrim = luminance(avg) > 0.6 ? 0x59 : 0;
+        if (scrimView != null) scrimView.setBackgroundColor(Color.argb(scrim, 0, 0, 0));
+        int k = 255 - scrim;
+        headerColor = Color.rgb(
+                Color.red(avg) * k / 255,
+                Color.green(avg) * k / 255,
+                Color.blue(avg) * k / 255);
+    }
 
-        sellerThread = new Thread(new Runnable() {
+    // =========================================================================
+    // DÉFILEMENT COMMUN ET BARRE DE STATUT DYNAMIQUE
+    // =========================================================================
+
+    private void attachScrollListener() {
+        if (scrollView == null) return;
+        scrollListener = new ViewTreeObserver.OnScrollChangedListener() {
+            @Override
+            public void onScrollChanged() {
+                applyScroll();
+            }
+        };
+        scrollView.getViewTreeObserver().addOnScrollChangedListener(scrollListener);
+    }
+
+    private void detachScrollListener() {
+        try {
+            if (scrollView != null && scrollListener != null
+                    && scrollView.getViewTreeObserver().isAlive()) {
+                scrollView.getViewTreeObserver().removeOnScrollChangedListener(scrollListener);
+            }
+        } catch (Exception ignored) {
+        }
+        scrollListener = null;
+    }
+
+    private void applyScroll() {
+        if (scrollView == null || headerRoot == null) return;
+        int y = scrollView.getScrollY();
+        int t = Math.min(Math.max(y, 0), headerTotalPx);
+        headerRoot.setTranslationY(-(float) t);
+
+        float p = logoHeightPx > 0 ? clamp01((float) y / (float) logoHeightPx) : 1f;
+        int color = (Integer) new ArgbEvaluator().evaluate(p, headerColor, PAGE_COLOR);
+        setStatusBar(color);
+    }
+
+    private void saveStatusBar() {
+        if (statusSaved) return;
+        try {
+            Window w = activity.getWindow();
+            origStatusColor = w.getStatusBarColor();
+            origSysUiFlags = w.getDecorView().getSystemUiVisibility();
+            statusSaved = true;
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void setStatusBar(int color) {
+        try {
+            Window w = activity.getWindow();
+            w.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+            w.setStatusBarColor(color);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                View d = w.getDecorView();
+                int f = d.getSystemUiVisibility();
+                int nf = luminance(color) > 0.55
+                        ? (f | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR)
+                        : (f & ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+                if (nf != f) d.setSystemUiVisibility(nf);
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    @SimpleFunction(description = "À appeler en quittant la page boutique : arrête le défilement commun, ferme le menu et remet la barre de statut d'origine.")
+    public void ReleaseShopHome() {
+        runOnUi(new Runnable() {
             @Override
             public void run() {
-                boolean reported = false;
-                while (sellerListening) {
+                detachScrollListener();
+                if (headerRoot != null) headerRoot.setTranslationY(0f);
+                if (menuOverlay != null) {
+                    ViewParent p = menuOverlay.getParent();
+                    if (p instanceof ViewGroup) ((ViewGroup) p).removeView(menuOverlay);
+                    menuOverlay = null;
+                    menuPanel = null;
+                    menuOpen = false;
+                }
+                if (statusSaved) {
                     try {
-                        final Boolean r = fetchSeller(cleanUrl, auth, cleanUid);
-                        if (r != null && sellerListening) {
-                            runOnUi(new Runnable() {
-                                @Override
-                                public void run() {
-                                    applySellerResult(cleanUid, r.booleanValue());
-                                }
-                            });
-                            if (r.booleanValue()) {
-                                sellerListening = false;
-                                break;
-                            }
-                        }
-                    } catch (Exception e) {
-                        if (!reported) {
-                            reported = true;
-                            fail("StartSellerStatusListener: " + e.getMessage());
-                        }
-                    }
-                    try {
-                        Thread.sleep(every);
-                    } catch (InterruptedException ie) {
-                        break;
+                        Window w = activity.getWindow();
+                        w.setStatusBarColor(origStatusColor);
+                        w.getDecorView().setSystemUiVisibility(origSysUiFlags);
+                    } catch (Exception ignored) {
                     }
                 }
             }
         });
-        sellerThread.setDaemon(true);
-        sellerThread.start();
     }
 
-    @SimpleFunction(description = "Arrête l'écoute du statut vendeur.")
-    public void StopSellerStatusListener() {
-        sellerListening = false;
-        if (sellerThread != null) {
-            sellerThread.interrupt();
-            sellerThread = null;
+    // =========================================================================
+    // COMPTEUR D'ARTICLES
+    // =========================================================================
+
+    private String countLabel(int n) {
+        return n + (n > 1 ? " Articles" : " Article");
+    }
+
+    private void showCount(final int n) {
+        articleCount = n;
+        runOnUi(new Runnable() {
+            @Override
+            public void run() {
+                if (countTv != null) countTv.setText(countLabel(n));
+            }
+        });
+    }
+
+    private int countProducts(String json) throws Exception {
+        String t = json == null ? "" : json.trim();
+        if (t.isEmpty()) return 0;
+        if (t.startsWith("[")) return new JSONArray(t).length();
+        JSONObject o = new JSONObject(t);
+        String[] keys = {"products", "produits", "items", "articles", "data"};
+        for (int i = 0; i < keys.length; i++) {
+            Object v = o.opt(keys[i]);
+            if (v instanceof JSONArray) return ((JSONArray) v).length();
+            if (v instanceof JSONObject) return ((JSONObject) v).length();
+        }
+        return o.length();
+    }
+
+    @SimpleFunction(description = "Compte les produits du JSON de la grille (le même que BuildProductGridFromJson), affiche « N Article(s) » dans la petite carte et retourne N.")
+    public int UpdateArticleCountFromJson(String jsonData) {
+        try {
+            int n = countProducts(jsonData);
+            showCount(n);
+            return n;
+        } catch (Exception e) {
+            OnError("UpdateArticleCountFromJson: JSON invalide (" + e.getMessage() + ")");
+            return 0;
         }
     }
 
-    @SimpleFunction(description = "À appeler UNIQUEMENT après la suppression totale du compte : efface le statut vendeur de l'utilisateur courant et arrête l'écoute. La page de création peut alors réapparaître.")
-    public void ClearSellerStatus() {
-        StopSellerStatusListener();
-        setSeller(prefs().getString(PREF_CURRENT_UID, ""), false);
+    @SimpleFunction(description = "Affiche directement un nombre d'articles dans la petite carte.")
+    public void SetArticleCount(int count) {
+        showCount(Math.max(0, count));
     }
 
-    @SimpleFunction(description = "Vide tous les champs, la catégorie et le logo du formulaire.")
-    public void ClearShopForm() {
-        shopName = "";
-        shopCategory = "";
-        shopPhone = "";
-        shopAddress = "";
-        logoPath = "";
-        nameState = 0;
-        nameChecking = false;
-        nameRequiredShown = false;
-        nameSeq++;
-        if (formContainer != null && !IsSeller()) render();
+    @SimpleFunction(description = "Retourne le nombre d'articles actuellement affiché.")
+    public int GetArticleCount() {
+        return articleCount;
+    }
+
+    // =========================================================================
+    // MENU HAMBURGER
+    // =========================================================================
+
+    private TextView menuItem(String label, final Runnable action) {
+        TextView t = text(label, 15, Color.BLACK);
+        t.setGravity(Gravity.CENTER_VERTICAL);
+        t.setPadding(dp(9), 0, dp(9), 0);
+        t.setClickable(true);
+        t.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(45)));
+        t.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                CloseShopMenu();
+                action.run();
+            }
+        });
+        return t;
+    }
+
+    private void ensureMenu() {
+        if (menuOverlay != null) return;
+        FrameLayout root = (FrameLayout) activity.findViewById(android.R.id.content);
+        if (root == null) {
+            OnError("Menu: racine de l'écran introuvable.");
+            return;
+        }
+        DisplayMetrics dm = context.getResources().getDisplayMetrics();
+        menuPanelWidth = (int) (dm.widthPixels * 0.54);
+
+        menuOverlay = new FrameLayout(context);
+        menuOverlay.setVisibility(View.GONE);
+        menuOverlay.setElevation((float) dp(1));
+
+        View catcher = new View(context);
+        catcher.setClickable(true);
+        catcher.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                CloseShopMenu();
+            }
+        });
+        menuOverlay.addView(catcher, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+
+        LinearLayout panel = new LinearLayout(context);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setBackgroundColor(Color.WHITE);
+        panel.setClickable(true);
+
+        FrameLayout closeBox = new FrameLayout(context);
+        closeBox.setClickable(true);
+        closeBox.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                CloseShopMenu();
+            }
+        });
+        closeBox.addView(new CloseView(context), new FrameLayout.LayoutParams(
+                dp(20), dp(20), Gravity.CENTER));
+        panel.addView(closeBox, new LinearLayout.LayoutParams(dp(38), dp(48)));
+
+        TextView item1 = menuItem("Mettre à jour les infos", new Runnable() {
+            @Override
+            public void run() {
+                OnUpdateInfosClick();
+            }
+        });
+        ((LinearLayout.LayoutParams) item1.getLayoutParams()).topMargin = dp(6);
+        panel.addView(item1);
+
+        panel.addView(menuItem("Détails de la boutique", new Runnable() {
+            @Override
+            public void run() {
+                OnShopDetailsClick();
+            }
+        }));
+
+        menuPanel = panel;
+        menuOverlay.addView(panel, new FrameLayout.LayoutParams(
+                menuPanelWidth, FrameLayout.LayoutParams.MATCH_PARENT, Gravity.START));
+        root.addView(menuOverlay, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+    }
+
+    @SimpleFunction(description = "Ouvre le menu latéral (Mettre à jour les infos / Détails de la boutique). Appelé aussi au toucher du menu hamburger.")
+    public void OpenShopMenu() {
+        runOnUi(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    ensureMenu();
+                    if (menuOverlay == null || menuOpen) return;
+
+                    // Le menu démarre à la hauteur du haut de la page (sous la barre de statut)
+                    FrameLayout root = (FrameLayout) activity.findViewById(android.R.id.content);
+                    int top = 0;
+                    if (headerRoot != null && root != null) {
+                        int[] hl = new int[2];
+                        int[] rl = new int[2];
+                        headerRoot.getLocationOnScreen(hl);
+                        root.getLocationOnScreen(rl);
+                        top = hl[1] - (int) headerRoot.getTranslationY() - rl[1];
+                        if (top < 0) top = 0;
+                    }
+                    FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) menuOverlay.getLayoutParams();
+                    lp.topMargin = top;
+                    menuOverlay.setLayoutParams(lp);
+
+                    menuOpen = true;
+                    menuOverlay.setVisibility(View.VISIBLE);
+                    menuPanel.setTranslationX(-(float) menuPanelWidth);
+                    menuPanel.animate()
+                            .translationX(0f)
+                            .setDuration(220)
+                            .setInterpolator(new DecelerateInterpolator())
+                            .start();
+                } catch (Exception e) {
+                    OnError("OpenShopMenu: " + e.getMessage());
+                }
+            }
+        });
+    }
+
+    @SimpleFunction(description = "Ferme le menu latéral.")
+    public void CloseShopMenu() {
+        runOnUi(new Runnable() {
+            @Override
+            public void run() {
+                if (menuOverlay == null || menuPanel == null || !menuOpen) return;
+                menuOpen = false;
+                menuPanel.animate()
+                        .translationX(-(float) menuPanelWidth)
+                        .setDuration(180)
+                        .setInterpolator(new DecelerateInterpolator())
+                        .withEndAction(new Runnable() {
+                            @Override
+                            public void run() {
+                                if (menuOverlay != null && !menuOpen) {
+                                    menuOverlay.setVisibility(View.GONE);
+                                }
+                            }
+                        })
+                        .start();
+            }
+        });
     }
 }
