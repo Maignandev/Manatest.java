@@ -11,6 +11,7 @@ import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
+import android.os.Environment;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.text.TextUtils;
@@ -94,6 +95,8 @@ public class Manatest extends AndroidNonvisibleComponent {
     // Ajustement du conteneur scrollable (fait une seule fois par vue)
     private View adjustedScrollView;
     private int origScrollHeight;
+    private View adjustedInner;
+    private int origInnerPadTop;
 
     // Barre de statut d'origine
     private boolean statusSaved = false;
@@ -199,12 +202,12 @@ public class Manatest extends AndroidNonvisibleComponent {
         EventDispatcher.dispatchEvent(this, "OnAddProductClick");
     }
 
-    @SimpleEvent(description = "L'utilisateur a touché « Mettre à jour les infos » dans le menu. Ouvre ici la page correspondante.")
+    @SimpleEvent(description = "L'utilisateur a touché « Mes infos » dans le menu. Ouvre ici la page correspondante.")
     public void OnUpdateInfosClick() {
         EventDispatcher.dispatchEvent(this, "OnUpdateInfosClick");
     }
 
-    @SimpleEvent(description = "L'utilisateur a touché « Détails de la boutique » dans le menu. Ouvre ici la page correspondante.")
+    @SimpleEvent(description = "L'utilisateur a touché « Détails » dans le menu. Ouvre ici la page correspondante.")
     public void OnShopDetailsClick() {
         EventDispatcher.dispatchEvent(this, "OnShopDetailsClick");
     }
@@ -223,20 +226,40 @@ public class Manatest extends AndroidNonvisibleComponent {
     // CONFIGURATION
     // =========================================================================
 
-    @SimpleFunction(description = "Charge la police du texte (ex: Manrope-Medium.ttf dans les Assets). À appeler avant BuildShopHome.")
+    private Typeface tryLoadTypeface(String name) {
+        if (name == null || name.trim().isEmpty()) return null;
+        try {
+            if (name.startsWith("/")) return Typeface.createFromFile(new File(name));
+        } catch (Exception ignored) {
+        }
+        try {
+            return Typeface.createFromAsset(context.getAssets(), name);
+        } catch (Exception ignored) {
+        }
+        try {
+            File f = new File(Environment.getExternalStorageDirectory(), "AppInventor/assets/" + name);
+            if (f.exists()) return Typeface.createFromFile(f);
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    // Manrope Medium est la police par défaut si le fichier est dans les Assets
+    private void ensureDefaultFont() {
+        if (customFont == null) customFont = tryLoadTypeface("Manrope-Medium.ttf");
+    }
+
+    @SimpleFunction(description = "Charge la police du texte (ex: Manrope-Medium.ttf dans les Assets). Si tu ne l'appelles pas, Manrope-Medium.ttf est utilisée automatiquement quand elle est dans les Assets. À appeler avant BuildShopHome.")
     public void LoadCustomFont(String fontPath) {
         if (fontPath == null || fontPath.trim().isEmpty()) {
             customFont = null;
             return;
         }
-        try {
-            if (fontPath.startsWith("/")) {
-                customFont = Typeface.createFromFile(new File(fontPath));
-            } else {
-                customFont = Typeface.createFromAsset(context.getAssets(), fontPath);
-            }
-        } catch (Exception e) {
-            OnError("LoadCustomFont: police introuvable (" + fontPath + ").");
+        Typeface t = tryLoadTypeface(fontPath.trim());
+        if (t == null) {
+            OnError("LoadCustomFont: police introuvable (" + fontPath + "). Mets le fichier dans les Assets.");
+        } else {
+            customFont = t;
         }
     }
 
@@ -346,13 +369,14 @@ public class Manatest extends AndroidNonvisibleComponent {
         }
 
         detachScrollListener();
+        ensureDefaultFont();
 
         DisplayMetrics dm = context.getResources().getDisplayMetrics();
         screenW = dm.widthPixels;
         screenH = dm.heightPixels;
         logoHeightPx = (int) (screenH * 0.35);
-        int btnH = (int) (screenH * 0.08);
-        int btnW = (int) (screenW * 0.90);
+        int btnH = (int) (screenH * 0.07);
+        int btnW = (int) (screenW * 0.80);
         int cardH = (int) (screenH * 0.05);
         int cardW = (int) (screenW * 0.30);
         headerTotalPx = logoHeightPx + dp(10) + btnH + dp(6) + cardH + dp(10);
@@ -429,13 +453,58 @@ public class Manatest extends AndroidNonvisibleComponent {
         if (origScrollHeight > 0) mlp.height = origScrollHeight + headerTotalPx;
         sv.setLayoutParams(mlp);
 
-        sc.setClipToPadding(false);
-        sc.setPadding(sc.getPaddingLeft(), headerTotalPx, sc.getPaddingRight(), sc.getPaddingBottom());
+        // La grille de ManaplaceUtils vide et remplit ce contenu interne : son padding reste
+        View inner = sc.getChildAt(0);
+        if (inner == null) {
+            OnError("BuildShopHome: l'arrangement scrollable n'a pas de contenu interne.");
+            return;
+        }
+        if (adjustedInner != inner) {
+            adjustedInner = inner;
+            origInnerPadTop = inner.getPaddingTop();
+        }
+        inner.setPadding(inner.getPaddingLeft(), origInnerPadTop + headerTotalPx,
+                inner.getPaddingRight(), inner.getPaddingBottom());
 
         saveStatusBar();
         attachScrollListener();
         applyLogoToView();
         applyScroll();
+
+        // Le Form peut réappliquer sa couleur de statut juste après Initialize : on réapplique
+        final View hvFinal = hv;
+        hv.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                applyScroll();
+            }
+        }, 400);
+        hv.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                diagnose(hvFinal);
+            }
+        }, 1000);
+    }
+
+    // Signale à OnError ce qui empêcherait la grille d'être visible sous le header
+    private void diagnose(View hv) {
+        try {
+            if (scrollView == null || headerRoot != hv) return;
+            ViewGroup inner = (ViewGroup) scrollView.getChildAt(0);
+            int[] a = new int[2];
+            int[] b = new int[2];
+            hv.getLocationOnScreen(a);
+            scrollOuter.getLocationOnScreen(b);
+            int diff = Math.abs((a[1] - (int) hv.getTranslationY()) - (b[1] - (int) scrollOuter.getTranslationY()));
+            if (diff > dp(2)) {
+                OnError("[diag] le haut de la grille (" + b[1] + ") ne correspond pas au haut du header (" + a[1] + ").");
+            }
+            if (inner != null && inner.getChildCount() == 0) {
+                OnError("[diag] la grille est vide : appelle BuildProductGridFromJson avec cet arrangement scrollable et un JSON valide.");
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     private View buildLogoFrame() {
@@ -501,14 +570,10 @@ public class Manatest extends AndroidNonvisibleComponent {
             public void run() {
                 try {
                     int maxW = context.getResources().getDisplayMetrics().widthPixels;
-                    Bitmap bmp;
-                    if (src.startsWith("http://") || src.startsWith("https://")) {
-                        bmp = downloadBitmap(src, maxW);
-                    } else {
-                        bmp = decodeFile(src.startsWith("file://") ? src.substring(7) : src, maxW);
-                    }
+                    Bitmap bmp = loadBitmap(src, maxW);
                     if (bmp == null) {
-                        fail("SetShopLogoSource: image illisible.");
+                        fail("SetShopLogoSource: logo introuvable ou illisible (" + src
+                                + "). Utilise un lien https, un fichier de l'appareil ou un fichier des Assets.");
                         return;
                     }
                     final Bitmap result = bmp;
@@ -526,6 +591,52 @@ public class Manatest extends AndroidNonvisibleComponent {
                 }
             }
         }).start();
+    }
+
+    private Bitmap loadBitmap(String src, int maxW) throws Exception {
+        if (src.startsWith("http://") || src.startsWith("https://")) {
+            return downloadBitmap(src, maxW);
+        }
+        if (src.startsWith("file://")) {
+            return decodeFile(src.substring(7), maxW);
+        }
+        if (src.startsWith("/")) {
+            return decodeFile(src, maxW);
+        }
+        // Nom de fichier simple : Assets de l'application (ex: world-flag.png)
+        try {
+            InputStream is = context.getAssets().open(src);
+            return decodeBytes(readAllBytes(is), maxW);
+        } catch (Exception ignored) {
+        }
+        // Companion : dossier des Assets sur le téléphone
+        File f = new File(Environment.getExternalStorageDirectory(), "AppInventor/assets/" + src);
+        if (f.exists()) return decodeFile(f.getAbsolutePath(), maxW);
+        return null;
+    }
+
+    private byte[] readAllBytes(InputStream is) throws Exception {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        byte[] buf = new byte[8192];
+        int n;
+        int total = 0;
+        while ((n = is.read(buf)) > 0) {
+            total += n;
+            if (total > 12 * 1024 * 1024) throw new Exception("image trop lourde");
+            bos.write(buf, 0, n);
+        }
+        is.close();
+        return bos.toByteArray();
+    }
+
+    private Bitmap decodeBytes(byte[] data, int maxW) {
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inJustDecodeBounds = true;
+        BitmapFactory.decodeByteArray(data, 0, data.length, o);
+        if (o.outWidth <= 0) return null;
+        o.inSampleSize = sampleFor(o.outWidth, maxW);
+        o.inJustDecodeBounds = false;
+        return BitmapFactory.decodeByteArray(data, 0, data.length, o);
     }
 
     private Bitmap decodeFile(String path, int maxW) {
@@ -546,25 +657,7 @@ public class Manatest extends AndroidNonvisibleComponent {
             c.setReadTimeout(20000);
             int code = c.getResponseCode();
             if (code >= 400) throw new Exception("serveur " + code);
-            InputStream is = c.getInputStream();
-            ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            byte[] buf = new byte[8192];
-            int n;
-            int total = 0;
-            while ((n = is.read(buf)) > 0) {
-                total += n;
-                if (total > 12 * 1024 * 1024) throw new Exception("image trop lourde");
-                bos.write(buf, 0, n);
-            }
-            is.close();
-            byte[] data = bos.toByteArray();
-            BitmapFactory.Options o = new BitmapFactory.Options();
-            o.inJustDecodeBounds = true;
-            BitmapFactory.decodeByteArray(data, 0, data.length, o);
-            if (o.outWidth <= 0) return null;
-            o.inSampleSize = sampleFor(o.outWidth, maxW);
-            o.inJustDecodeBounds = false;
-            return BitmapFactory.decodeByteArray(data, 0, data.length, o);
+            return decodeBytes(readAllBytes(c.getInputStream()), maxW);
         } finally {
             if (c != null) c.disconnect();
         }
@@ -699,6 +792,20 @@ public class Manatest extends AndroidNonvisibleComponent {
             public void run() {
                 detachScrollListener();
                 if (headerRoot != null) headerRoot.setTranslationY(0f);
+                if (adjustedInner != null) {
+                    adjustedInner.setPadding(adjustedInner.getPaddingLeft(), origInnerPadTop,
+                            adjustedInner.getPaddingRight(), adjustedInner.getPaddingBottom());
+                    adjustedInner = null;
+                }
+                if (adjustedScrollView != null) {
+                    ViewGroup.LayoutParams lp = adjustedScrollView.getLayoutParams();
+                    if (lp instanceof ViewGroup.MarginLayoutParams) {
+                        ((ViewGroup.MarginLayoutParams) lp).topMargin = 0;
+                        if (origScrollHeight > 0) lp.height = origScrollHeight;
+                        adjustedScrollView.setLayoutParams(lp);
+                    }
+                    adjustedScrollView = null;
+                }
                 if (menuOverlay != null) {
                     ViewParent p = menuOverlay.getParent();
                     if (p instanceof ViewGroup) ((ViewGroup) p).removeView(menuOverlay);
@@ -777,12 +884,13 @@ public class Manatest extends AndroidNonvisibleComponent {
     // =========================================================================
 
     private TextView menuItem(String label, final Runnable action) {
-        TextView t = text(label, 15, Color.BLACK);
+        TextView t = text(label, 25, Color.BLACK);
         t.setGravity(Gravity.CENTER_VERTICAL);
         t.setPadding(dp(9), 0, dp(9), 0);
+        t.setSingleLine(true);
         t.setClickable(true);
         t.setLayoutParams(new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(45)));
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(56)));
         t.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -835,7 +943,7 @@ public class Manatest extends AndroidNonvisibleComponent {
                 dp(20), dp(20), Gravity.CENTER));
         panel.addView(closeBox, new LinearLayout.LayoutParams(dp(38), dp(48)));
 
-        TextView item1 = menuItem("Mettre à jour les infos", new Runnable() {
+        TextView item1 = menuItem("Mes infos", new Runnable() {
             @Override
             public void run() {
                 OnUpdateInfosClick();
@@ -844,7 +952,7 @@ public class Manatest extends AndroidNonvisibleComponent {
         ((LinearLayout.LayoutParams) item1.getLayoutParams()).topMargin = dp(6);
         panel.addView(item1);
 
-        panel.addView(menuItem("Détails de la boutique", new Runnable() {
+        panel.addView(menuItem("Détails", new Runnable() {
             @Override
             public void run() {
                 OnShopDetailsClick();
@@ -858,7 +966,7 @@ public class Manatest extends AndroidNonvisibleComponent {
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
     }
 
-    @SimpleFunction(description = "Ouvre le menu latéral (Mettre à jour les infos / Détails de la boutique). Appelé aussi au toucher du menu hamburger.")
+    @SimpleFunction(description = "Ouvre le menu latéral (Mes infos / Détails). Appelé aussi au toucher du menu hamburger.")
     public void OpenShopMenu() {
         runOnUi(new Runnable() {
             @Override
