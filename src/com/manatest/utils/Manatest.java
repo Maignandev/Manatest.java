@@ -750,7 +750,7 @@ public class Manatest extends AndroidNonvisibleComponent {
             w.setStatusBarColor(Color.TRANSPARENT);
             View d = w.getDecorView();
             int f = d.getSystemUiVisibility();
-            int nf = f | View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULL_SCREEN;
+            int nf = f | View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN;
             if (nf != f) d.setSystemUiVisibility(nf);
         } catch (Exception ignored) {
         }
