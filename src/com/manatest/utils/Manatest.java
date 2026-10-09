@@ -9,7 +9,6 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Typeface;
-import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Environment;
@@ -102,13 +101,13 @@ public class Manatest extends AndroidNonvisibleComponent {
     private TextView categoryTv;
     private TextView countTv;
     private View statusScrim;
+    private View decorBackdrop;
     private ViewTreeObserver.OnScrollChangedListener scrollListener;
 
     // Barre de statut d'origine
     private boolean barsSaved = false;
     private int origStatusColor;
     private int origSysUiFlags;
-    private Drawable origDecorBg;
 
     // Menu
     private FrameLayout menuOverlay;
@@ -380,8 +379,14 @@ public class Manatest extends AndroidNonvisibleComponent {
         detachScrollListener();
         destroyMenu();
 
+        String me = prefs().getString(PREF_CURRENT_UID, "");
         shopUidValue = uid == null ? "" : uid.trim();
+        if (shopUidValue.isEmpty()) shopUidValue = me; // pas d'uid donné : sa propre boutique
         ownerFlag = isOwner(shopUidValue);
+        if (me.isEmpty()) {
+            OnError("[diag] utilisateur inconnu : appelle SetShopUser avec un uid non vide avant BuildShopHome. "
+                    + "La page est en mode visiteur (le bouton Ajouter un produit et Édit sont masqués).");
+        }
 
         DisplayMetrics dm = context.getResources().getDisplayMetrics();
         screenH = dm.heightPixels;
@@ -736,7 +741,6 @@ public class Manatest extends AndroidNonvisibleComponent {
             Window w = activity.getWindow();
             origStatusColor = w.getStatusBarColor();
             origSysUiFlags = w.getDecorView().getSystemUiVisibility();
-            origDecorBg = w.getDecorView().getBackground();
             barsSaved = true;
         } catch (Exception ignored) {
         }
@@ -785,6 +789,31 @@ public class Manatest extends AndroidNonvisibleComponent {
                 FrameLayout.LayoutParams.MATCH_PARENT, statusBarH, Gravity.TOP));
     }
 
+    // Vue posée tout en haut de la fenêtre, derrière les icônes de statut
+    private void ensureDecorBackdrop() {
+        if (statusBarH <= 0) return;
+        try {
+            ViewGroup decor = (ViewGroup) activity.getWindow().getDecorView();
+            if (decorBackdrop != null && decorBackdrop.getParent() == decor) return;
+            decorBackdrop = new View(context);
+            decorBackdrop.setBackgroundColor(topColor);
+            decorBackdrop.setClickable(false);
+            decorBackdrop.setOutlineProvider(null);
+            decorBackdrop.setElevation((float) dp(24));
+            decor.addView(decorBackdrop, new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT, statusBarH, Gravity.TOP));
+        } catch (Exception e) {
+            decorBackdrop = null;
+        }
+    }
+
+    private void removeDecorBackdrop() {
+        if (decorBackdrop == null) return;
+        ViewGroup p = (ViewGroup) decorBackdrop.getParent();
+        if (p != null) p.removeView(decorBackdrop);
+        decorBackdrop = null;
+    }
+
     private void removeScrim() {
         if (statusScrim == null) return;
         ViewGroup p = (ViewGroup) statusScrim.getParent();
@@ -811,7 +840,12 @@ public class Manatest extends AndroidNonvisibleComponent {
             edgeMode = newEdge;
             extraTop = newExtra;
             updateLogoExtra();
-            if (edgeMode) ensureScrim(); else removeScrim();
+            if (edgeMode) {
+                ensureScrim();
+                removeDecorBackdrop();
+            } else {
+                removeScrim();
+            }
         }
         applyScroll();
     }
@@ -848,10 +882,10 @@ public class Manatest extends AndroidNonvisibleComponent {
         if (edgeMode) {
             if (statusScrim != null) statusScrim.setAlpha(p);
         } else {
-            // Le contenu est sous la barre : le fond de la fenêtre prend la couleur du logo
-            try {
-                activity.getWindow().getDecorView().setBackgroundColor(blend(topColor, Color.WHITE, p));
-            } catch (Exception ignored) {
+            // Le contenu démarre sous la barre : on peint la zone de la barre avec la couleur du logo
+            ensureDecorBackdrop();
+            if (decorBackdrop != null) {
+                decorBackdrop.setBackgroundColor(blend(topColor, Color.WHITE, p));
             }
         }
         double bgLum = topLum * (1f - p) + p;
@@ -866,6 +900,7 @@ public class Manatest extends AndroidNonvisibleComponent {
                 detachScrollListener();
                 destroyMenu();
                 removeScrim();
+                removeDecorBackdrop();
                 if (headerHolder != null && headerHolder.getParent() instanceof ViewGroup) {
                     ((ViewGroup) headerHolder.getParent()).removeView(headerHolder);
                 }
@@ -875,7 +910,6 @@ public class Manatest extends AndroidNonvisibleComponent {
                         Window w = activity.getWindow();
                         w.setStatusBarColor(origStatusColor);
                         w.getDecorView().setSystemUiVisibility(origSysUiFlags);
-                        w.getDecorView().setBackground(origDecorBg);
                     } catch (Exception ignored) {
                     }
                     barsSaved = false;
