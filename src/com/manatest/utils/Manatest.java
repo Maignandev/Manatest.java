@@ -466,9 +466,9 @@ public class Manatest extends AndroidNonvisibleComponent {
         screenW = dm.widthPixels;
         statusBarH = statusBarHeight();
         logoHeightPx = (int) (screenH * 0.35);
-        topBtnW = (int) (screenW * 0.17);
-        topBtnH = (int) (screenH * 0.07);
-        int btnH = (int) (screenH * 0.07);
+        topBtnW = (int) (screenW * 0.12);   // cercle : largeur = hauteur
+        topBtnH = topBtnW;
+        int btnH = (int) (screenH * 0.06);
         int btnW = (int) (screenW * 0.95);
         int cardH = (int) (screenH * 0.05);
         int cardW = (int) (screenW * 0.30);
@@ -585,7 +585,7 @@ public class Manatest extends AndroidNonvisibleComponent {
         FrameLayout b = new FrameLayout(context);
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(Color.argb(0x66, 0xD5, 0xD5, 0xD5));
-        bg.setCornerRadius(dp(60));
+        bg.setShape(GradientDrawable.OVAL);
         b.setBackground(bg);
         b.setClickable(true);
         return b;
@@ -594,7 +594,7 @@ public class Manatest extends AndroidNonvisibleComponent {
     // Icône Phosphor si un caractère est donné, sinon un symbole simple par défaut
     private TextView makeIconText(String icon, String fallback) {
         TextView t = new TextView(context);
-        t.setTextSize(26);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_PX, topBtnW * 0.5f);
         t.setTextColor(ink(0xFF));
         t.setGravity(Gravity.CENTER);
         t.setIncludeFontPadding(false);
@@ -671,7 +671,7 @@ public class Manatest extends AndroidNonvisibleComponent {
         });
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
                 topBtnW, topBtnH, Gravity.TOP | Gravity.START);
-        lp.leftMargin = dp(5);
+        lp.leftMargin = dp(8);
         lp.topMargin = dp(4);
         contentLayer.addView(left, lp);
 
@@ -689,7 +689,7 @@ public class Manatest extends AndroidNonvisibleComponent {
         });
         FrameLayout.LayoutParams rp = new FrameLayout.LayoutParams(
                 topBtnW, topBtnH, Gravity.TOP | Gravity.END);
-        rp.rightMargin = dp(5);
+        rp.rightMargin = dp(8);
         rp.topMargin = dp(4);
         contentLayer.addView(right, rp);
 
