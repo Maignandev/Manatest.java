@@ -244,6 +244,16 @@ public class Manatest extends AndroidNonvisibleComponent {
         EventDispatcher.dispatchEvent(this, "OnReportShopClick", shopUid);
     }
 
+    @SimpleEvent(description = "Le serveur a supprimé le produit (ou il n'existait déjà plus). productUid : l'uid du produit supprimé. Ferme la page d'édition et reviens à la page boutique : sa grille et son compteur se rechargent avec LoadShopFromServer.")
+    public void OnProductDeleted(String productUid) {
+        EventDispatcher.dispatchEvent(this, "OnProductDeleted", productUid);
+    }
+
+    @SimpleEvent(description = "La suppression du produit a échoué. responseCode : code HTTP du serveur (0 si refusée par l'application ou erreur réseau). message : la réponse du serveur ou la raison.")
+    public void OnProductDeleteFailed(int responseCode, String message) {
+        EventDispatcher.dispatchEvent(this, "OnProductDeleteFailed", responseCode, message);
+    }
+
     @SimpleEvent(description = "Les infos de la boutique sont arrivées du serveur et affichées (nom, catégorie, logo, adresse, téléphone).")
     public void OnShopInfoLoaded(String name, String category, String logo, String address, String phone) {
         EventDispatcher.dispatchEvent(this, "OnShopInfoLoaded", name, category, logo, address, phone);
@@ -1355,6 +1365,105 @@ public class Manatest extends AndroidNonvisibleComponent {
                 extraTop = 0;
             }
         });
+    }
+
+    // =========================================================================
+    // SUPPRESSION D'UN PRODUIT
+    // =========================================================================
+
+    private String deleteUrlValue = "";
+    private String deleteAuthValue = "";
+    private boolean deleting = false;
+
+    @SimpleFunction(description = "Définit une fois l'adresse du serveur qui supprime un produit, et le jeton (avec ou sans « Bearer »). L'adresse peut contenir {uid} (uid du vendeur) et {productUid} (uid du produit), par exemple https://serveur/{uid}/products/{productUid}. Sans ces repères, ?uid=...&productUid=... est ajouté à la fin. La suppression est envoyée avec la méthode DELETE.")
+    public void SetProductDeleteUrl(String url, String authorization) {
+        deleteUrlValue = url == null ? "" : url.trim();
+        deleteAuthValue = authHeader(authorization);
+    }
+
+    private boolean deleteBodyOk(String body) {
+        try {
+            JSONObject o = new JSONObject(body.trim());
+            if (o.has("success")) return o.optBoolean("success");
+            if (o.has("error")) return false;
+            return true;
+        } catch (Exception e) {
+            return true; // réponse sans JSON : le code HTTP décide
+        }
+    }
+
+    @SimpleFunction(description = "Supprime un produit sur le serveur. productUid : l'uid du produit (donné par ManaplaceUtils.OnProductCardClick). sellerUid : l'uid Firebase du vendeur, sous lequel se trouve le produit. Refusé si sellerUid n'est pas l'utilisateur connecté (SetShopUser). Résultat : OnProductDeleted ou OnProductDeleteFailed. Demande toujours une confirmation avant, la suppression est définitive. Appelle SetProductDeleteUrl avant.")
+    public void DeleteProduct(final String productUid, final String sellerUid) {
+        final String pUid = productUid == null ? "" : productUid.trim();
+        final String sUid = sellerUid == null ? "" : sellerUid.trim();
+        if (deleteUrlValue.isEmpty()) {
+            OnError("DeleteProduct: appelle SetProductDeleteUrl avant.");
+            return;
+        }
+        if (pUid.isEmpty() || sUid.isEmpty()) {
+            OnError("DeleteProduct: l'uid du produit ou du vendeur est vide.");
+            return;
+        }
+        if (!isOwner(sUid)) {
+            OnProductDeleteFailed(0, "Suppression refusée : ce vendeur n'est pas l'utilisateur connecté (appelle SetShopUser).");
+            return;
+        }
+        if (deleting) return;
+        deleting = true;
+
+        final String baseUrl = deleteUrlValue;
+        final String auth = deleteAuthValue;
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                HttpURLConnection c = null;
+                try {
+                    String encSeller = URLEncoder.encode(sUid, "UTF-8");
+                    String encProduct = URLEncoder.encode(pUid, "UTF-8");
+                    String target;
+                    if (baseUrl.contains("{uid}") || baseUrl.contains("{productUid}")) {
+                        target = baseUrl.replace("{uid}", encSeller).replace("{productUid}", encProduct);
+                    } else {
+                        target = baseUrl + (baseUrl.contains("?") ? "&" : "?")
+                                + "uid=" + encSeller + "&productUid=" + encProduct;
+                    }
+                    c = (HttpURLConnection) new URL(target).openConnection();
+                    c.setRequestMethod("DELETE");
+                    c.setConnectTimeout(15000);
+                    c.setReadTimeout(15000);
+                    c.setRequestProperty("Accept", "application/json");
+                    if (!auth.isEmpty()) c.setRequestProperty("Authorization", auth);
+
+                    final int code = c.getResponseCode();
+                    InputStream is = code >= 400 ? c.getErrorStream() : c.getInputStream();
+                    final String body = is == null ? "" : new String(readAllBytes(is), "UTF-8");
+                    // 404 : le produit n'existe déjà plus, le résultat voulu est atteint
+                    final boolean ok = (code >= 200 && code < 300 && deleteBodyOk(body)) || code == 404;
+                    runOnUi(new Runnable() {
+                        @Override
+                        public void run() {
+                            deleting = false;
+                            if (ok) {
+                                showCount(Math.max(0, articleCount - 1));
+                                OnProductDeleted(pUid);
+                            } else {
+                                OnProductDeleteFailed(code, body);
+                            }
+                        }
+                    });
+                } catch (final Exception e) {
+                    runOnUi(new Runnable() {
+                        @Override
+                        public void run() {
+                            deleting = false;
+                            OnProductDeleteFailed(0, "Réseau : " + e.getMessage());
+                        }
+                    });
+                } finally {
+                    if (c != null) c.disconnect();
+                }
+            }
+        }).start();
     }
 
     // =========================================================================
