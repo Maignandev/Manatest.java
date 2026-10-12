@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
@@ -16,6 +17,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.media.ExifInterface;
 import android.net.Uri;
@@ -45,6 +47,8 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListPopupWindow;
 import android.widget.PopupWindow;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
@@ -158,6 +162,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
     private boolean nameRequiredShown = false;
     private Runnable nameRunnable;
     private boolean submitting = false;
+    private int radioButtonColor = Color.parseColor("#C01A1A1B");
 
     // Page 2 : prix
     private ViewGroup priceContainer;
@@ -183,7 +188,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
     private FieldView condField;
     private FieldView colorField;
     private FieldView sizeField;
-    private View swatch;
+    private LinearLayout swatchRow;
 
     public Manatest(ComponentContainer container) {
         super(container.$form());
@@ -569,6 +574,19 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         void on(String value);
     }
 
+    // Toutes les tailles de composants sont des pourcentages de l'écran
+    private int wp(float pct) {
+        return Math.round(context.getResources().getDisplayMetrics().widthPixels * pct / 100f);
+    }
+
+    private int hp(float pct) {
+        return Math.round(context.getResources().getDisplayMetrics().heightPixels * pct / 100f);
+    }
+
+    private int fieldH() {
+        return Math.max(hp(8.5f), dp(48));
+    }
+
     private void hideKeyboard() {
         try {
             View v = activity.getCurrentFocus();
@@ -595,7 +613,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         s.setLayoutParams(new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
-        s.setPadding(dp(20), dp(16), dp(20), dp(16));
+        s.setPadding(wp(5.5f), hp(2f), wp(5.5f), hp(2f));
         return s;
     }
 
@@ -604,8 +622,8 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
-        p.topMargin = dp(12);
-        p.leftMargin = dp(2);
+        p.topMargin = hp(1.5f);
+        p.leftMargin = wp(0.5f);
         t.setLayoutParams(p);
         return t;
     }
@@ -613,7 +631,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
     // Titre de bloc : taille 15, noir
     private TextView blockTitle(String s) {
         TextView t = text(s, 15, Color.BLACK, true);
-        t.setPadding(dp(2), 0, 0, dp(12));
+        t.setPadding(wp(0.5f), 0, 0, hp(1.5f));
         return t;
     }
 
@@ -622,8 +640,8 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
-        p.topMargin = dp(6);
-        p.leftMargin = dp(2);
+        p.topMargin = hp(0.8f);
+        p.leftMargin = wp(0.5f);
         t.setLayoutParams(p);
         t.setVisibility(View.GONE);
         return t;
@@ -633,7 +651,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         View v = new View(context);
         v.setBackgroundColor(Color.parseColor("#F5F5F5"));
         v.setLayoutParams(new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(14)));
+                LinearLayout.LayoutParams.MATCH_PARENT, hp(1.8f)));
         parent.addView(v);
     }
 
@@ -666,6 +684,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         final FrameLayout box;
         final TextView label;
         final GradientDrawable bg;
+        final int fh = fieldH();
         EditText edit;
         TextView value;
         boolean floated = false;
@@ -676,23 +695,23 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         FieldView(String hint) {
             box = new FrameLayout(context);
             box.setLayoutParams(new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, dp(FIELD_HEIGHT_DP)));
+                    LinearLayout.LayoutParams.MATCH_PARENT, fh));
             bg = new GradientDrawable();
             bg.setColor(Color.TRANSPARENT);
-            bg.setCornerRadius(dp(24));
+            bg.setCornerRadius(fh * 0.375f);
             box.setBackground(bg);
 
             label = text(hint, 15, cHint(), false);
             FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.WRAP_CONTENT, dp(22),
+                    FrameLayout.LayoutParams.WRAP_CONTENT, Math.round(fh * 0.34f),
                     Gravity.CENTER_VERTICAL | Gravity.START);
-            lp.leftMargin = dp(20);
+            lp.leftMargin = wp(5.5f);
             label.setLayoutParams(lp);
             label.setGravity(Gravity.CENTER_VERTICAL);
             label.setSingleLine(true);
             label.setClickable(false);
             label.setPivotX(0f);
-            label.setPivotY((float) dp(11));
+            label.setPivotY(fh * 0.17f);
             updateStroke();
         }
 
@@ -719,7 +738,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         void setFloated(boolean f, boolean animate) {
             if (animate && floated == f) return;
             floated = f;
-            float ty = f ? -(float) dp(17) : 0f;
+            float ty = f ? -(fh * 0.27f) : 0f;
             float sc = f ? 0.8f : 1f;
             if (animate) {
                 label.animate()
@@ -751,7 +770,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
     }
 
     private FieldView editField(String hint, int inputType, int maxLen, int imeAction,
-                                String initial, final TextCb cb, int rightPadDp) {
+                                String initial, final TextCb cb, float rightPadPct) {
         final FieldView f = new FieldView(hint);
         final EditText e = new EditText(context);
         e.setBackground(null);
@@ -763,7 +782,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         e.setSingleLine(true);
         e.setImeOptions(imeAction);
         e.setFilters(new InputFilter[]{new InputFilter.LengthFilter(maxLen)});
-        e.setPadding(dp(20), dp(24), dp(rightPadDp), dp(6));
+        e.setPadding(wp(5.5f), Math.round(f.fh * 0.375f), wp(rightPadPct), Math.round(f.fh * 0.09f));
         e.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
         f.edit = e;
         f.box.addView(e, new FrameLayout.LayoutParams(
@@ -828,14 +847,14 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         f.value.setSingleLine(true);
         f.value.setEllipsize(TextUtils.TruncateAt.END);
         f.value.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
-        f.value.setPadding(dp(20), dp(24), dp(48), dp(6));
+        f.value.setPadding(wp(5.5f), Math.round(f.fh * 0.375f), wp(13.3f), Math.round(f.fh * 0.09f));
         f.box.addView(f.value, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
 
         FrameLayout.LayoutParams ap = new FrameLayout.LayoutParams(
-                dp(14), dp(8), Gravity.END | Gravity.CENTER_VERTICAL);
-        ap.rightMargin = dp(20);
+                wp(3.9f), wp(2.2f), Gravity.END | Gravity.CENTER_VERTICAL);
+        ap.rightMargin = wp(5.5f);
         f.box.addView(new ArrowView(context), ap);
 
         f.attachLabel();
@@ -849,16 +868,16 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(8), dp(8), dp(8), dp(8));
+        row.setPadding(wp(2.2f), wp(2.2f), wp(2.2f), wp(2.2f));
         TextView t = text(initial, 15, cText(), false);
         row.addView(t);
-        LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(dp(14), dp(8));
-        ap.leftMargin = dp(8);
+        LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(wp(3.9f), wp(2.2f));
+        ap.leftMargin = wp(2.2f);
         row.addView(new ArrowView(context), ap);
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.END | Gravity.CENTER_VERTICAL);
-        lp.rightMargin = dp(12);
+        lp.rightMargin = wp(3.3f);
         row.setClickable(true);
         row.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -884,13 +903,13 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         pop.setAnchorView(anchor);
         pop.setModal(true);
         pop.setWidth(widthPx);
-        pop.setHeight(items.size() <= 5 ? ViewGroup.LayoutParams.WRAP_CONTENT : dp(5 * 48 + 8));
+        pop.setHeight(items.size() <= 5 ? ViewGroup.LayoutParams.WRAP_CONTENT : hp(6.2f) * 5 + hp(1f));
         pop.setHorizontalOffset(hOffset);
-        pop.setVerticalOffset(dp(4));
+        pop.setVerticalOffset(hp(0.5f));
 
         GradientDrawable pbg = new GradientDrawable();
         pbg.setColor(Color.WHITE);
-        pbg.setCornerRadius(dp(16));
+        pbg.setCornerRadius(wp(4.4f));
         pbg.setStroke(dp(1), cStroke());
         pop.setBackgroundDrawable(pbg);
 
@@ -918,11 +937,11 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
                 } else {
                     tv = text("", 15, cText(), false);
                     tv.setGravity(Gravity.CENTER_VERTICAL);
-                    tv.setPadding(dp(20), 0, dp(20), 0);
+                    tv.setPadding(wp(5.5f), 0, wp(5.5f), 0);
                     tv.setSingleLine(true);
                     tv.setEllipsize(TextUtils.TruncateAt.END);
                     tv.setLayoutParams(new AbsListView.LayoutParams(
-                            AbsListView.LayoutParams.MATCH_PARENT, dp(48)));
+                            AbsListView.LayoutParams.MATCH_PARENT, hp(6.2f)));
                 }
                 String item = items.get(position);
                 tv.setText(item);
@@ -1071,7 +1090,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
 
                     TextView intro = text("Ces informations seront visibles par vos clients sur votre profil",
                             15, cTitle(), false);
-                    intro.setPadding(dp(20), dp(16), dp(20), 0);
+                    intro.setPadding(wp(5.5f), hp(2f), wp(5.5f), 0);
                     editContainer.addView(intro);
 
                     // nom
@@ -1086,7 +1105,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
                                     nameRequiredShown = false;
                                     scheduleNameCheck();
                                 }
-                            }, 20);
+                            }, 5.5f);
                     s1.addView(nameField.box);
                     nameStatus = errorText();
                     s1.addView(nameStatus);
@@ -1117,7 +1136,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
                                 public void on(String v) {
                                     shopPhone = v;
                                 }
-                            }, 20);
+                            }, 5.5f);
                     s3.addView(phoneField.box);
                     addressField = editField("Adresse complète",
                             InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES,
@@ -1126,9 +1145,9 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
                                 public void on(String v) {
                                     shopAddress = v;
                                 }
-                            }, 20);
+                            }, 5.5f);
                     LinearLayout.LayoutParams alp = (LinearLayout.LayoutParams) addressField.box.getLayoutParams();
-                    alp.topMargin = dp(18);
+                    alp.topMargin = hp(2.3f);
                     addressField.box.setLayoutParams(alp);
                     s3.addView(addressField.box);
                     editContainer.addView(s3);
@@ -1144,7 +1163,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
                     addSeparator(editContainer);
                     View pad = new View(context);
                     pad.setLayoutParams(new LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT, dp(24)));
+                            LinearLayout.LayoutParams.MATCH_PARENT, hp(3f)));
                     editContainer.addView(pad);
                 } catch (Exception e) {
                     OnError("renderEdit: " + e.getMessage());
@@ -1196,19 +1215,21 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         sec.setGravity(Gravity.CENTER_HORIZONTAL);
 
         FrameLayout outer = new FrameLayout(context);
-        LinearLayout.LayoutParams op = new LinearLayout.LayoutParams(dp(158), dp(158));
+        final int outerSide = wp(44f);
+        LinearLayout.LayoutParams op = new LinearLayout.LayoutParams(outerSide, outerSide);
         op.gravity = Gravity.CENTER_HORIZONTAL;
-        op.topMargin = dp(8);
-        op.bottomMargin = dp(20);
+        op.topMargin = hp(1f);
+        op.bottomMargin = hp(2.5f);
         outer.setLayoutParams(op);
         GradientDrawable obg = new GradientDrawable();
         obg.setColor(Color.WHITE);
-        obg.setCornerRadius(dp(30));
+        obg.setCornerRadius(Math.round(outerSide * 0.19f));
         outer.setBackground(obg);
         outer.setElevation((float) dp(6));
         outer.setRotation(-4f);
 
-        final int innerRadius = dp(26);
+        final int innerSide = wp(37.2f);
+        final int innerRadius = Math.round(innerSide * 0.19f);
         FrameLayout inner = new FrameLayout(context);
         GradientDrawable ibg = new GradientDrawable();
         ibg.setColor(Color.parseColor("#E8E8E8"));
@@ -1221,10 +1242,10 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
             }
         });
         inner.setClipToOutline(true);
-        outer.addView(inner, new FrameLayout.LayoutParams(dp(134), dp(134), Gravity.CENTER));
+        outer.addView(inner, new FrameLayout.LayoutParams(innerSide, innerSide, Gravity.CENTER));
 
         logoGlyph = new PhotoGlyph(context);
-        inner.addView(logoGlyph, new FrameLayout.LayoutParams(dp(44), dp(44), Gravity.CENTER));
+        inner.addView(logoGlyph, new FrameLayout.LayoutParams(wp(12.2f), wp(12.2f), Gravity.CENTER));
 
         logoImage = new ImageView(context);
         logoImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -1821,7 +1842,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
                                     if (priceErr != null) priceErr.setVisibility(View.GONE);
                                     updateTotal();
                                 }
-                            }, 110);
+                            }, 30f);
                     priceCurTv = addSelector(priceField, curLabel(), new Runnable() {
                         @Override
                         public void run() {
@@ -1844,7 +1865,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
                                     if (feeErr != null) feeErr.setVisibility(View.GONE);
                                     updateTotal();
                                 }
-                            }, 110);
+                            }, 30f);
                     deliveryTv = addSelector(feeField, deliveryOn ? "Oui" : "Non", new Runnable() {
                         @Override
                         public void run() {
@@ -1861,34 +1882,34 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
                     LinearLayout s3 = section();
                     FrameLayout card = new FrameLayout(context);
                     card.setLayoutParams(new LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT, dp(72)));
+                            LinearLayout.LayoutParams.MATCH_PARENT, hp(9.2f)));
                     GradientDrawable cbg = new GradientDrawable();
                     cbg.setColor(Color.parseColor("#F5F5F5"));
-                    cbg.setCornerRadius(dp(16));
+                    cbg.setCornerRadius(wp(4.4f));
                     card.setBackground(cbg);
 
                     TextView lbl = text("Montant total", 12, cHint(), false);
                     FrameLayout.LayoutParams l1 = new FrameLayout.LayoutParams(
                             FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
                             Gravity.TOP | Gravity.START);
-                    l1.leftMargin = dp(20);
-                    l1.topMargin = dp(10);
+                    l1.leftMargin = wp(5.5f);
+                    l1.topMargin = hp(1.3f);
                     card.addView(lbl, l1);
 
                     totalValueTv = text("0", 25, cText(), false);
                     FrameLayout.LayoutParams l2 = new FrameLayout.LayoutParams(
                             FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
                             Gravity.BOTTOM | Gravity.START);
-                    l2.leftMargin = dp(20);
-                    l2.bottomMargin = dp(8);
+                    l2.leftMargin = wp(5.5f);
+                    l2.bottomMargin = hp(1f);
                     card.addView(totalValueTv, l2);
 
                     totalCurTv = text(curLabel(), 20, cText(), false);
                     FrameLayout.LayoutParams l3 = new FrameLayout.LayoutParams(
                             FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
                             Gravity.BOTTOM | Gravity.END);
-                    l3.rightMargin = dp(20);
-                    l3.bottomMargin = dp(8);
+                    l3.rightMargin = wp(5.5f);
+                    l3.bottomMargin = hp(1f);
                     card.addView(totalCurTv, l3);
 
                     s3.addView(card);
@@ -1908,8 +1929,8 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         final List<String> items = new ArrayList<String>();
         items.add("HTG");
         items.add("USD");
-        int w = dp(140);
-        showListPopup(priceField.box, w, priceField.box.getWidth() - w - dp(12), items, priceCurrency,
+        int w = wp(39f);
+        showListPopup(priceField.box, w, priceField.box.getWidth() - w - wp(3.3f), items, priceCurrency,
                 new PickCb() {
                     @Override
                     public void on(String v) {
@@ -1929,8 +1950,8 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         final List<String> items = new ArrayList<String>();
         items.add("Non");
         items.add("Oui");
-        int w = dp(140);
-        showListPopup(feeField.box, w, feeField.box.getWidth() - w - dp(12), items,
+        int w = wp(39f);
+        showListPopup(feeField.box, w, feeField.box.getWidth() - w - wp(3.3f), items,
                 deliveryOn ? "Oui" : "Non",
                 new PickCb() {
                     @Override
@@ -2161,6 +2182,11 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         if (variantContainer != null) renderVariants();
     }
 
+    @SimpleFunction(description = "Définit la couleur des boutons radio de la boîte de dialogue de l'état (même réglage que dans ManaplaceUtils, #C01A1A1B par défaut).")
+    public void SetRadioButtonColor(int color) {
+        radioButtonColor = color;
+    }
+
     @SimpleFunction(description = "Remplace la liste des états de la boîte de dialogue : un tableau JSON ou des noms séparés par des virgules. Par défaut : Neuf, Bon état, Comme neuf, Assez bon état.")
     public void SetConditionOptions(String optionsList) {
         if (optionsList == null || optionsList.trim().isEmpty()) return;
@@ -2208,7 +2234,7 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
 
                     // état : carte qui ouvre la boîte de dialogue
                     LinearLayout s1 = section();
-                    s1.setPadding(dp(20), dp(24), dp(20), dp(24));
+                    s1.setPadding(wp(5.5f), hp(3f), wp(5.5f), hp(3f));
                     condField = dropField("État", condition);
                     condField.box.setOnClickListener(new View.OnClickListener() {
                         @Override
@@ -2223,29 +2249,31 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
 
                     // variantes
                     TextView title = text("Variantes", 15, ink(0xA6), true);
-                    title.setPadding(dp(20), dp(16), dp(20), 0);
+                    title.setPadding(wp(5.5f), hp(2f), wp(5.5f), 0);
                     variantContainer.addView(title);
 
                     LinearLayout s2 = section();
                     colorField = editField("Couleur",
                             InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES,
-                            30, EditorInfo.IME_ACTION_NEXT, color, new TextCb() {
+                            60, EditorInfo.IME_ACTION_NEXT, color, new TextCb() {
                                 @Override
                                 public void on(String v) {
                                     color = v;
                                     updateSwatch();
                                 }
-                            }, 20);
+                            }, 5.5f);
                     s2.addView(colorField.box);
 
-                    // pastille de la couleur reconnue
-                    swatch = new View(context);
-                    LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(dp(24), dp(24));
-                    sp.leftMargin = dp(16);
-                    sp.topMargin = dp(10);
-                    swatch.setLayoutParams(sp);
-                    swatch.setVisibility(View.GONE);
-                    s2.addView(swatch);
+                    // pastilles des couleurs reconnues (une par couleur, séparées par une virgule)
+                    swatchRow = new LinearLayout(context);
+                    swatchRow.setOrientation(LinearLayout.HORIZONTAL);
+                    LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                    sp.leftMargin = wp(4.4f);
+                    sp.topMargin = hp(1.3f);
+                    swatchRow.setLayoutParams(sp);
+                    swatchRow.setVisibility(View.GONE);
+                    s2.addView(swatchRow);
 
                     sizeField = editField("Taille",
                             InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES,
@@ -2254,9 +2282,9 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
                                 public void on(String v) {
                                     size = v;
                                 }
-                            }, 20);
+                            }, 5.5f);
                     LinearLayout.LayoutParams zlp = (LinearLayout.LayoutParams) sizeField.box.getLayoutParams();
-                    zlp.topMargin = dp(16);
+                    zlp.topMargin = hp(2f);
                     sizeField.box.setLayoutParams(zlp);
                     s2.addView(sizeField.box);
                     variantContainer.addView(s2);
@@ -2269,18 +2297,41 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
         });
     }
 
+    // « Vert, Bleu , rouge » ou « rouge et noir » : une couleur par élément reconnu
+    private List<Integer> resolveColors(String raw) {
+        List<Integer> out = new ArrayList<Integer>();
+        if (raw == null) return out;
+        String[] parts = raw.toLowerCase(Locale.ROOT).split("\\s*(?:,|;|/|\\+|&|\\bet\\b|\\band\\b)\\s*");
+        for (int i = 0; i < parts.length && out.size() < 8; i++) {
+            String p = parts[i].trim();
+            if (p.isEmpty()) continue;
+            Integer c = resolveColor(p);
+            if (c != null && !out.contains(c)) out.add(c);
+        }
+        return out;
+    }
+
     private void updateSwatch() {
-        if (swatch == null) return;
-        Integer col = resolveColor(color);
-        if (col == null) {
-            swatch.setVisibility(View.GONE);
+        if (swatchRow == null) return;
+        swatchRow.removeAllViews();
+        List<Integer> cols = resolveColors(color);
+        if (cols.isEmpty()) {
+            swatchRow.setVisibility(View.GONE);
             return;
         }
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(col.intValue());
-        g.setStroke(dp(1), Color.BLACK);
-        swatch.setBackground(g);
-        swatch.setVisibility(View.VISIBLE);
+        int side = wp(7f);
+        for (int i = 0; i < cols.size(); i++) {
+            View v = new View(context);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(side, side);
+            if (i > 0) lp.leftMargin = wp(2f);
+            v.setLayoutParams(lp);
+            GradientDrawable g = new GradientDrawable();
+            g.setColor(cols.get(i).intValue());
+            g.setStroke(dp(1), Color.BLACK);
+            v.setBackground(g);
+            swatchRow.addView(v);
+        }
+        swatchRow.setVisibility(View.VISIBLE);
     }
 
     private void openConditionDialog() {
@@ -2290,26 +2341,69 @@ public class Manatest extends AndroidNonvisibleComponent implements ActivityResu
             OnError("Aucun état disponible : appelle SetConditionOptions.");
             return;
         }
-        final String[] arr = conditions.toArray(new String[0]);
-        int checked = conditions.indexOf(condition);
         try {
-            AlertDialog.Builder b = new AlertDialog.Builder(activity);
-            b.setTitle("État");
-            b.setSingleChoiceItems(arr, checked, new DialogInterface.OnClickListener() {
+            final AlertDialog[] ref = new AlertDialog[1];
+
+            LinearLayout content = new LinearLayout(context);
+            content.setOrientation(LinearLayout.VERTICAL);
+            content.setPadding(wp(6f), hp(2.5f), wp(6f), hp(1.5f));
+            GradientDrawable wbg = new GradientDrawable();
+            wbg.setColor(Color.WHITE);
+            wbg.setCornerRadius(wp(7f));
+            content.setBackground(wbg);
+
+            TextView title = text("État", 18, ink(0xE9), true);
+            title.setPadding(0, 0, 0, hp(1f));
+            content.addView(title);
+
+            RadioGroup group = new RadioGroup(context);
+            group.setOrientation(LinearLayout.VERTICAL);
+            ColorStateList tint = ColorStateList.valueOf(radioButtonColor);
+            for (int i = 0; i < conditions.size(); i++) {
+                final String item = conditions.get(i);
+                RadioButton rb = new RadioButton(context);
+                rb.setId(View.generateViewId());
+                rb.setText(item);
+                rb.setTextColor(ink(0xC0));
+                rb.setTextSize(15);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    rb.setButtonTintList(tint);
+                }
+                if (customFont != null) rb.setTypeface(customFont);
+                rb.setPadding(wp(2.2f), hp(1.5f), wp(2.2f), hp(1.5f));
+                rb.setChecked(item.equals(condition));
+                rb.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        selectCondition(item, true);
+                        if (ref[0] != null) ref[0].dismiss();
+                    }
+                });
+                group.addView(rb);
+            }
+            content.addView(group);
+
+            TextView cancel = text("Annuler", 14, ink(0xC0), true);
+            cancel.setPadding(wp(3f), hp(1.5f), wp(1f), hp(1f));
+            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            clp.gravity = Gravity.END;
+            cancel.setLayoutParams(clp);
+            cancel.setClickable(true);
+            cancel.setOnClickListener(new View.OnClickListener() {
                 @Override
-                public void onClick(DialogInterface dialog, int which) {
-                    selectCondition(arr[which], true);
-                    dialog.dismiss();
+                public void onClick(View v) {
+                    if (ref[0] != null) ref[0].dismiss();
                 }
             });
-            b.setNegativeButton("Annuler", null);
-            AlertDialog d = b.create();
+            content.addView(cancel);
+
+            AlertDialog d = new AlertDialog.Builder(activity).setView(content).create();
+            ref[0] = d;
             d.show();
             try {
-                GradientDrawable wbg = new GradientDrawable();
-                wbg.setColor(Color.WHITE);
-                wbg.setCornerRadius(dp(20));
-                d.getWindow().setBackgroundDrawable(wbg);
+                d.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+                d.getWindow().setLayout(wp(90f), ViewGroup.LayoutParams.WRAP_CONTENT);
             } catch (Exception ignored) {
             }
         } catch (Exception e) {
